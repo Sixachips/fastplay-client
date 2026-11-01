@@ -1,0 +1,8 @@
+# Rust/Cargo build artifacts
+target/
+
+# Trunk development server output
+dist/
+
+# Personal notes (not part of the codebase)
+notes.txt

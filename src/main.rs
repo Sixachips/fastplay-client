@@ -1,5 +1,5 @@
-//! fastPlay client root: mounts the app, owns the WebSocket session, and
-//! routes between the home / room / game screens.
+/// fastPlay client root: mounts the app, owns the WebSocket session, and
+/// routes between the home / room / game screens.
 
 mod legality;
 mod protocol;
@@ -22,14 +22,15 @@ use view::game::GameView;
 use view::home::HomeView;
 use view::room::RoomView;
 
-/// Command handle shared with the views. The reducer is pure, so anything
-/// that touches the socket goes through this: it owns the current `Session`
+// Command handle shared with the views. The reducer is pure, so anything
+// that touches the socket goes through this: it owns the current `Session`
 /// (assigning a new one drops the old connection, which stops its reconnect
 /// loop) and dispatches the matching state messages.
 #[derive(Clone)]
 pub struct Api {
     pub state: UseReducerHandle<AppState>,
     session: Rc<RefCell<Option<Session>>>,
+
 }
 
 impl PartialEq for Api {
@@ -55,8 +56,7 @@ impl Api {
             Callback::from(move |event: SocketEvent| state.dispatch(Msg::Socket(event)))
         };
         let session = Session::start(self.state.ws_url.clone(), room, name, on_event);
-        // Assigning drops the previous session: its command channel closes,
-        // the connection loop stops, and the socket closes.
+        // Assigning drops the previous session: its connection loop stops, and the socket closes.
         *self.session.borrow_mut() = Some(session);
     }
 
@@ -103,10 +103,7 @@ impl Api {
 #[function_component(App)]
 fn app() -> Html {
     let state = use_reducer_eq(state::initial);
-    let api = {
-        let state = state.clone();
-        use_memo((), move |_| Api::new(state.clone()))
-    };
+    let api = Api::new(state.clone());
 
     // Toasts fade out on their own.
     {
@@ -124,7 +121,8 @@ fn app() -> Html {
         });
     }
 
-    let api = (*api).clone();
+    let api = api.clone();
+
     html! {
         <div class="app">
             {

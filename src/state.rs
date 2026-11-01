@@ -121,6 +121,12 @@ impl AppState {
             name: name.to_owned(),
         })
     }
+
+    /// Check if we should show the connecting screen based on current state.
+    /// Returns true if the UI should indicate connection is in progress.
+    pub fn is_connecting(&self) -> bool {
+        self.target.is_some() && self.room.is_none()
+    }
 }
 
 impl Reducible for AppState {

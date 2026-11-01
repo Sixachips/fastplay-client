@@ -133,6 +133,7 @@ async fn run(
                                             break Outcome::Reconnect("send failed".to_string());
                                         }
                                     }
+                                    None => {} // No command yet, continue waiting
                                     // Explicit Leave, or every `Session`
                                     // handle was dropped: stop for good.
                                     _ => break Outcome::Stop,

@@ -4,6 +4,8 @@
 //! client can speak it. Tags (`#[serde(tag = "type")]`) and casing
 //! (`snake_case`) must stay in sync with the server's definitions.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 pub const SEAT_COUNT: usize = 4;
@@ -38,6 +40,22 @@ impl PublicTile {
         } else {
             self.left
         }
+    }
+
+    /// The same tile in canonical order (`left <= right`), which is how hands
+    /// are sent: board tiles are oriented, so comparing the two needs this.
+    pub fn normalized(&self) -> PublicTile {
+        PublicTile {
+            left: self.left.min(self.right),
+            right: self.left.max(self.right),
+        }
+    }
+}
+
+impl fmt::Display for PublicTile {
+    /// A tile as the player reads it: `3|6`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}|{}", self.left, self.right)
     }
 }
 

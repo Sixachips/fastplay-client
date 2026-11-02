@@ -311,19 +311,45 @@ input[type="text"] {
 .banner-buttons { display: flex; gap: 10px; margin-top: 10px; }
 .banner-buttons .btn { flex: 1; }
 
-/* end picker */
-.scrim {
-    position: fixed; inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid; place-items: center;
-    padding: 20px;
-    z-index: 50;
+/* ---------- placement: pick a tile, then choose its end ---------- */
+/* The board ends double as tap targets while a tile is picked. */
+.end-btn {
+    appearance: none; font: inherit; color: inherit;
+    padding: 4px 10px; border-radius: 10px; cursor: pointer;
+    transition: box-shadow 0.15s, background 0.15s, transform 0.15s;
 }
-.picker { width: min(340px, 100%); text-align: center; }
-.picker p { margin: 0 0 10px; font-weight: 700; }
-.picker-row { display: flex; gap: 10px; margin: 12px 0; }
-.picker-row .btn { flex: 1; font-size: 18px; }
-.picker .btn-ghost { width: 100%; }
+.end-btn:disabled { cursor: default; }
+.end-btn.fit {
+    border-color: var(--amber);
+    background: rgba(244, 169, 17, 0.22);
+    box-shadow: 0 0 10px rgba(244, 169, 17, 0.45);
+}
+.end-btn.fit:active { transform: scale(0.96); }
+
+.place-bar {
+    border-color: var(--amber);
+    display: flex; flex-direction: column; gap: 10px;
+}
+.place-head { display: flex; align-items: center; gap: 10px; }
+.place-hint {
+    color: var(--text-dim); font-size: 14px; font-weight: 600;
+    margin-right: auto;
+}
+.place-cancel { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.place-row { display: flex; gap: 10px; }
+.place-row .btn { flex: 1; }
+.place-end {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-height: 58px;
+}
+.place-end-pip { font-size: 19px; font-weight: 800; }
+.place-end-reads { font-size: 12px; font-weight: 600; opacity: 0.75; }
+
+@media (max-width: 480px) {
+    .place-end { min-height: 54px; padding: 8px 6px; }
+    .place-end-pip { font-size: 17px; }
+    .place-end-reads { font-size: 11px; }
+}
 
 .offline-bar {
     text-align: center;

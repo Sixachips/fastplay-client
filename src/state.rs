@@ -2,6 +2,11 @@
 //! actions. The wire snapshots (`RoomState`, `GameStateUpdate`) are stored
 //! verbatim — the server is the authority and every update is a full view,
 //! so the client never has to merge partial state.
+//!
+//! One private slice is *not* carried by the snapshots: our own hand, which is
+//! dealt once and only ever summarized as a tile count afterwards. [`sync_hand`]
+//! retires the tiles we played from it, so the hand on screen stays what the
+//! server actually holds for us.
 
 use std::rc::Rc;
 
@@ -9,6 +14,7 @@ use gloo_storage::{LocalStorage, Storage};
 use serde::{Deserialize, Serialize};
 use yew::Reducible;
 
+use crate::legality::same_tile;
 use crate::protocol::{ClientToServer, PublicGameState, PublicRoomState, PublicTile, ServerToClient};
 use crate::session::{SocketEvent, SocketState};
 
@@ -181,6 +187,8 @@ fn reduce(state: &mut AppState, msg: Msg) {
                     }
                 }
                 ServerToClient::GameStateUpdate { state: game } => {
+                    let you = state.room.as_ref().map(|room| room.you);
+                    sync_hand(&mut state.hand, state.game.as_ref(), &game, you);
                     state.game = Some(game)
                 }
                 ServerToClient::MoveRejected { reason } => {
@@ -197,6 +205,74 @@ fn reduce(state: &mut AppState, msg: Msg) {
 
         Msg::ShowToast { kind, text } => state.set_toast(kind, text),
         Msg::DismissToast => state.toast = None,
+    }
+}
+
+/// Keeps our private hand in step with the authoritative snapshots.
+///
+/// `HandDealt` arrives once per game and never again: after that the table
+/// only publishes `hand_counts`. So every tile we play has to leave the hand
+/// here, and it is retired on evidence rather than guessed — a tile is ours to
+/// drop when the chain just grew by exactly that tile (chain tiles are stored
+/// oriented, hand tiles canonical, hence [`same_tile`]).
+///
+/// Getting this wrong is not cosmetic: a phantom tile keeps `has_playable`
+/// true, which keeps the **Pass** button disabled and strands the seat with no
+/// move it can actually make.
+fn sync_hand(
+    hand: &mut Vec<PublicTile>,
+    prev: Option<&PublicGameState>,
+    next: &PublicGameState,
+    you: Option<usize>,
+) {
+    // Our move: the seat we were told to play as, the game still live, and one
+    // tile added to the chain. This also covers the winning tile (the game ends
+    // in the very snapshot that lands it), which the count clamp alone would
+    // have to guess at.
+    if let (Some(seat), Some(prev)) = (you, prev) {
+        if prev.turn == seat && prev.result.is_none() {
+            if let Some(played) = tile_added(&prev.board, &next.board) {
+                if let Some(pos) = hand.iter().position(|held| same_tile(*held, played)) {
+                    hand.remove(pos);
+                }
+            }
+        }
+    }
+
+    // Safety net for anything this pass could not reconstruct (a snapshot lost
+    // to a reconnect, an opponent move we never saw): never hold more tiles
+    // than the table says we do.
+    let Some(expected) = you
+        .and_then(|seat| next.hand_counts.get(seat))
+        .copied()
+        .map(usize::from)
+    else {
+        return;
+    };
+    while hand.len() > expected {
+        // Prefer the tile the board is already showing (that is the one we
+        // played); otherwise trim the oldest surplus.
+        let surplus = hand
+            .iter()
+            .position(|held| next.board.iter().any(|placed| same_tile(*held, *placed)))
+            .unwrap_or(0);
+        hand.remove(surplus);
+    }
+}
+
+/// The single tile a chain gained between two snapshots. The train only grows
+/// at its two ends, so the newcomer is the extra head or the extra tail; any
+/// other shape (a redeal, several missed updates) is not trusted.
+fn tile_added(prev: &[PublicTile], next: &[PublicTile]) -> Option<PublicTile> {
+    if next.len() != prev.len() + 1 {
+        return None;
+    }
+    if &next[1..] == prev {
+        Some(next[0])
+    } else if &next[..next.len() - 1] == prev {
+        Some(next[next.len() - 1])
+    } else {
+        None
     }
 }
 
@@ -226,4 +302,89 @@ pub fn initial() -> AppState {
 pub fn persist_inputs(name: &str, ws_url: &str) {
     let _ = LocalStorage::set(NAME_KEY, name);
     let _ = LocalStorage::set(WS_URL_KEY, ws_url);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tile(left: u8, right: u8) -> PublicTile {
+        PublicTile { left, right }
+    }
+
+    /// A snapshot built the way the server builds it: the chain carries the
+    /// ends, and `left`/`right` of the first/last tile are those ends.
+    fn view(board: &[PublicTile], turn: usize, counts: [u8; 4]) -> PublicGameState {
+        PublicGameState {
+            turn,
+            board: board.to_vec(),
+            left_end: board.first().map(|t| t.left),
+            right_end: board.last().map(|t| t.right),
+            hand_counts: counts,
+            consecutive_passes: 0,
+            result: None,
+        }
+    }
+
+    #[test]
+    fn our_tile_leaves_the_hand_when_it_lands_on_the_right_end() {
+        let prev = view(&[tile(3, 4)], 2, [7, 7, 3, 7]);
+        // 4|6 appended right: the chain tile is oriented `4|6`, our hand tile
+        // is canonical `4|6`.
+        let next = view(&[tile(3, 4), tile(4, 6)], 3, [7, 7, 2, 7]);
+        let mut hand = vec![tile(1, 6), tile(4, 6), tile(2, 2)];
+        sync_hand(&mut hand, Some(&prev), &next, Some(2));
+        assert_eq!(hand, vec![tile(1, 6), tile(2, 2)]);
+    }
+
+    #[test]
+    fn our_tile_leaves_the_hand_when_it_lands_on_the_left_end() {
+        let prev = view(&[tile(5, 3)], 1, [7, 2, 7, 7]);
+        // Canonical 2|5 played left of a 5: it reads `2|5` on the chain.
+        let next = view(&[tile(2, 5), tile(5, 3)], 2, [7, 1, 7, 7]);
+        let mut hand = vec![tile(2, 5), tile(6, 6)];
+        sync_hand(&mut hand, Some(&prev), &next, Some(1));
+        assert_eq!(hand, vec![tile(6, 6)]);
+    }
+
+    #[test]
+    fn an_opponent_move_never_touches_our_hand() {
+        let prev = view(&[tile(1, 2)], 3, [6, 7, 7, 7]);
+        // Seat 3 lands 2|6 — which we could never also hold, but a hand that
+        // mentions those pips must still be left alone.
+        let next = view(&[tile(1, 2), tile(2, 6)], 0, [6, 7, 7, 6]);
+        let mut hand = vec![tile(2, 6), tile(3, 3)];
+        sync_hand(&mut hand, Some(&prev), &next, Some(2));
+        assert_eq!(hand, vec![tile(2, 6), tile(3, 3)]);
+    }
+
+    #[test]
+    fn a_hand_too_long_for_the_table_is_trimmed_to_it() {
+        // Two tiles arrived at once (a snapshot we never saw, e.g. across a
+        // reconnect), so the exact match cannot fire and the count clamp must.
+        let prev = view(&[tile(3, 4)], 2, [7, 7, 3, 7]);
+        let next = view(&[tile(3, 4), tile(4, 6), tile(6, 6)], 0, [7, 7, 1, 7]);
+        let mut hand = vec![tile(1, 6), tile(4, 6), tile(6, 6)];
+        sync_hand(&mut hand, Some(&prev), &next, Some(2));
+        assert_eq!(hand, vec![tile(1, 6)], "board-visible tiles are the ones dropped");
+    }
+
+    #[test]
+    fn a_redeal_leaves_the_hand_to_hand_dealt() {
+        let prev = view(&[tile(1, 2), tile(2, 3)], 0, [5, 7, 7, 7]);
+        let next = view(&[], 1, [7, 7, 7, 7]);
+        let mut hand = vec![tile(1, 2)];
+        sync_hand(&mut hand, Some(&prev), &next, Some(0));
+        assert_eq!(hand, vec![tile(1, 2)], "a short hand is not invented away");
+    }
+
+    #[test]
+    fn tile_added_only_trusts_a_chain_grown_at_one_end() {
+        let (a, b, c) = (tile(1, 2), tile(2, 3), tile(3, 4));
+        assert_eq!(tile_added(&[a, b], &[a, b, c]), Some(c), "grew right");
+        assert_eq!(tile_added(&[a, b], &[c, a, b]), Some(c), "grew left");
+        assert_eq!(tile_added(&[a, b], &[a, c, b]), None, "never happens mid-chain");
+        assert_eq!(tile_added(&[a], &[a, b, c]), None, "two tiles at once");
+        assert_eq!(tile_added(&[a, b], &[a, b]), None, "a pass changes nothing");
+    }
 }

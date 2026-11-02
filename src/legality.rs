@@ -20,6 +20,25 @@ impl Fit {
     }
 }
 
+/// Whether two tiles are the same physical domino, ignoring orientation.
+///
+/// Hand tiles arrive canonical (`left <= right`) while board tiles carry the
+/// orientation they were played in, so `3|6` and `6|3` are one and the same —
+/// which is what lets hand bookkeeping be matched against the chain.
+pub fn same_tile(a: PublicTile, b: PublicTile) -> bool {
+    a.normalized() == b.normalized()
+}
+
+/// The pips a tile would have to match, worded for a "that fits nowhere"
+/// message: one number when both ends show the same pip.
+pub fn open_ends(game: &PublicGameState) -> String {
+    match (game.left_end, game.right_end) {
+        (Some(left), Some(right)) if left == right => left.to_string(),
+        (Some(left), Some(right)) => format!("{left} or {right}"),
+        _ => "no tile yet".to_owned(),
+    }
+}
+
 /// Fit of `tile` against the current board ends. On an empty board any tile
 /// opens, so both sides are reported (the server ignores the side anyway).
 pub fn fit(tile: PublicTile, game: &PublicGameState) -> Fit {

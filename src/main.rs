@@ -25,15 +25,31 @@ use view::game::GameView;
 use view::home::HomeView;
 use view::room::RoomView;
 
+/// Holder for the live socket that survives re-renders.
+///
+/// `Api` is rebuilt on every render of `App`, so the `Rc` it points at must
+/// NOT be: a fresh `Rc::new(RefCell::new(None))` per render would hand the
+/// views an empty slot while the running `Session` stayed behind in the
+/// previous one — every command would then vanish in `Api::send_cmd` with no
+/// error, no toast and a green "connected" dot. Equality is pointer equality,
+/// which keeps `Api: PartialEq` (and therefore re-render detection) honest.
+#[derive(Clone, Default)]
+struct SessionSlot(Rc<RefCell<Option<Session>>>);
+
+impl PartialEq for SessionSlot {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 // Command handle shared with the views. The reducer is pure, so anything
 // that touches the socket goes through this: it owns the current `Session`
-/// (assigning a new one drops the old connection, which stops its reconnect
-/// loop) and dispatches the matching state messages.
+// (assigning a new one drops the old connection, which stops its reconnect
+// loop) and dispatches the matching state messages.
 #[derive(Clone)]
 pub struct Api {
     pub state: UseReducerHandle<AppState>,
     session: Rc<RefCell<Option<Session>>>,
-
 }
 
 impl PartialEq for Api {
@@ -43,8 +59,8 @@ impl PartialEq for Api {
 }
 
 impl Api {
-    fn new(state: UseReducerHandle<AppState>) -> Api {
-        Api { state, session: Rc::new(RefCell::new(None)) }
+    fn new(state: UseReducerHandle<AppState>, session: Rc<RefCell<Option<Session>>>) -> Api {
+        Api { state, session }
     }
 
     /// Open (or re-open) a connection and claim a seat in `room` as `name`.
@@ -78,11 +94,20 @@ impl Api {
         self.join(code, self.state.name.clone());
     }
 
-    /// Send a game command over the live socket. Commands issued while the
-    /// link is down are dropped; the post-reconnect snapshots re-sync us.
+    /// Send a game command over the live socket. With no session at all (never
+    /// joined, or just left) the command cannot be queued, so say so out loud:
+    /// a dropped move that leaves no trace is indistinguishable from a dead
+    /// screen, which is exactly how this bug hid for so long.
     pub fn send_cmd(&self, cmd: ClientToServer) {
-        if let Some(session) = &mut *self.session.borrow_mut() {
-            session.send(cmd);
+        match &mut *self.session.borrow_mut() {
+            Some(session) => session.send(cmd),
+            None => {
+                gloo_console::warn!(format!("no socket to send {cmd:?} on"));
+                self.state.dispatch(Msg::ShowToast {
+                    kind: ToastKind::Warn,
+                    text: "Not connected to the table".to_owned(),
+                });
+            }
         }
     }
 
@@ -124,7 +149,10 @@ fn sync_room_url(code: Option<&str>) {
 #[function_component(App)]
 fn app() -> Html {
     let state = use_reducer_eq(state::initial);
-    let api = Api::new(state.clone());
+    // The socket slot has to come from a hook: this body runs again on every
+    // render, and a slot built here would be a new, empty one each time.
+    let slot = use_state(SessionSlot::default);
+    let api = Api::new(state.clone(), slot.0.clone());
 
     // Toasts fade out on their own.
     {

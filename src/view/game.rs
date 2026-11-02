@@ -1,18 +1,22 @@
 //! The game screen: opponents strip, board chain, your hand, and the
 //! play / pass / play-again controls.
 //!
-//! Interaction model: tap a playable tile. If it fits exactly one end it
-//! plays there immediately; if it fits both, an end picker appears; on an
-//! empty board the tile plays directly (the server ignores the side).
+//! Interaction model: tap a playable tile to PICK it up — nothing is played on
+//! that tap. While a tile is picked, a placement bar above the hand offers one
+//! button per end it fits, and the two pips shown at the ends of the board are
+//! tap targets for the same move. Tapping the picked tile again puts it back.
+//! An empty board has no ends to choose between, so the opening tile gets a
+//! single confirm button (the server ignores the side there).
 
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
-use crate::legality::{fit, has_playable};
+use crate::legality::{fit, has_playable, open_ends};
 use crate::protocol::{
-    ClientToServer, EndReason, GameResult, PublicRoomState, PublicTile, Side,
+    ClientToServer, EndReason, GameResult, PublicGameState, PublicRoomState, PublicTile, Side,
 };
 use crate::session::SocketState;
+use crate::state::{Msg, ToastKind};
 use crate::view::domino::{Domino, DominoSize};
 use crate::view::TopBar;
 use crate::Api;
@@ -20,6 +24,41 @@ use crate::Api;
 #[derive(Properties, PartialEq)]
 pub struct Props {
     pub api: Api,
+}
+
+/// One legal landing spot for the picked tile: which end of the chain, the pip
+/// it matches, and how the tile will read once it is down.
+#[derive(Clone)]
+struct Placement {
+    side: Side,
+    end_pip: u8,
+    reads: String,
+}
+
+/// Landing spots for `tile`, in board order (left end first). Empty while the
+/// board is empty: there is nothing to choose between before the opener.
+fn placements(tile: PublicTile, game: &PublicGameState) -> Vec<Placement> {
+    if game.board.is_empty() {
+        return Vec::new();
+    }
+    let f = fit(tile, game);
+    let mut spots = Vec::with_capacity(2);
+    if let Some(pip) = game.left_end.filter(|_| f.left) {
+        // On the left end the matching pip faces the chain, i.e. to its right.
+        spots.push(Placement {
+            side: Side::Left,
+            end_pip: pip,
+            reads: format!("{}|{}", tile.outer_pip_at(pip), pip),
+        });
+    }
+    if let Some(pip) = game.right_end.filter(|_| f.right) {
+        spots.push(Placement {
+            side: Side::Right,
+            end_pip: pip,
+            reads: format!("{}|{}", pip, tile.outer_pip_at(pip)),
+        });
+    }
+    spots
 }
 
 #[function_component(GameView)]
@@ -37,9 +76,10 @@ pub fn game_view(props: &Props) -> Html {
     let you = room.you;
     let over = game.result.is_some();
     let my_turn = !over && game.turn == you;
-    let must_pass = my_turn && !game.board.is_empty() && !has_playable(&hand, &game);
+    let playable_exists = has_playable(&hand, &game);
+    let must_pass = my_turn && !playable_exists;
 
-    // Any new snapshot invalidates a pending end pick.
+    // Any new snapshot invalidates a pending pick.
     {
         let selected = selected.clone();
         let key = (game.turn, game.board.len(), game.result);
@@ -47,6 +87,14 @@ pub fn game_view(props: &Props) -> Html {
             selected.set(None);
         });
     }
+
+    // A pick only counts while we still hold the tile and it is our turn, so a
+    // snapshot that ends our turn (or retires the tile) cannot leave a dangling
+    // placement bar pointing at a tile that is already on the table.
+    let picked = (*selected).filter(|tile| my_turn && hand.contains(tile));
+    let spots = picked.map(|tile| placements(tile, &game)).unwrap_or_default();
+    let fit_left = spots.iter().any(|spot| spot.side == Side::Left);
+    let fit_right = spots.iter().any(|spot| spot.side == Side::Right);
 
     let on_tile = {
         let api = api.clone();
@@ -56,28 +104,25 @@ pub fn game_view(props: &Props) -> Html {
             if !my_turn {
                 return;
             }
-            let f = fit(tile, &game);
-            if game.board.is_empty() {
-                api.send_cmd(ClientToServer::PlayTile { tile, side: Side::Right });
-            } else {
-                match (f.left, f.right) {
-                    (true, true) => {
-                        // Toggle: tapping the already-picked tile cancels.
-                        selected.set(if *selected == Some(tile) { None } else { Some(tile) });
-                    }
-                    (true, false) => {
-                        api.send_cmd(ClientToServer::PlayTile { tile, side: Side::Left });
-                    }
-                    (false, true) => {
-                        api.send_cmd(ClientToServer::PlayTile { tile, side: Side::Right });
-                    }
-                    (false, false) => {}
-                }
+            if !fit(tile, &game).any() {
+                // A silent no-op reads as a broken screen: name the pips the
+                // tile failed to match, and say whether anything can go down.
+                let text = if playable_exists {
+                    format!("{tile} fits neither {} — try another tile", open_ends(&game))
+                } else {
+                    format!("{tile} fits neither {} — you have to pass", open_ends(&game))
+                };
+                api.state.dispatch(Msg::ShowToast { kind: ToastKind::Warn, text });
+                return;
             }
+            // Tap to pick it up; tap the picked tile again to put it back.
+            selected.set(if *selected == Some(tile) { None } else { Some(tile) });
         })
     };
 
-    let pick_end = {
+    // Confirms the picked tile onto one end. The board ends fire the same
+    // callback, so the bar is a shortcut, not the only way to place.
+    let on_place = {
         let api = api.clone();
         let selected = selected.clone();
         Callback::from(move |side: Side| {
@@ -87,7 +132,7 @@ pub fn game_view(props: &Props) -> Html {
             }
         })
     };
-    let cancel_pick = {
+    let on_cancel = {
         let selected = selected.clone();
         Callback::from(move |_: MouseEvent| selected.set(None))
     };
@@ -120,11 +165,15 @@ pub fn game_view(props: &Props) -> Html {
 
     let status = if over {
         "Game over".to_owned()
-    } else if my_turn {
-        "Your turn — pick a tile".to_owned()
-    } else {
+    } else if !my_turn {
         let name = api.state.name_at(game.turn).unwrap_or("A player");
         format!("{name} is playing…")
+    } else if picked.is_some() {
+        "Now choose the end".to_owned()
+    } else if must_pass {
+        "Nothing fits — pass".to_owned()
+    } else {
+        "Your turn — pick a tile".to_owned()
     };
 
     let player_card = |seat: usize| -> Html {
@@ -158,19 +207,32 @@ pub fn game_view(props: &Props) -> Html {
         }
     };
 
+    let end_button = |side: Side, pip: Option<u8>, fits: bool| -> Html {
+        let on_place = on_place.clone();
+        let label = match (side, pip) {
+            (Side::Left, Some(pip)) => format!("◀ {pip}"),
+            (Side::Left, None) => "◀ –".to_owned(),
+            (Side::Right, Some(pip)) => format!("{pip} ▶"),
+            (Side::Right, None) => "– ▶".to_owned(),
+        };
+        html! {
+            <button class={classes!("end", "end-btn", fits.then_some("fit"))}
+                    disabled={!fits}
+                    onclick={Callback::from(move |_: MouseEvent| on_place.emit(side))}>
+                { label }
+            </button>
+        }
+    };
+
     let table = html! {
         <div class="table">
             <div class="table-north">{ player_card(0) }</div>
             <div class="table-west">{ player_card(3) }</div>
             <div class="table-board board card">
                 <div class="ends">
-                    <span class="end">
-                        { game.left_end.map(|p| format!("◀ {p}")).unwrap_or_else(|| "◀ –".to_owned()) }
-                    </span>
+                    { end_button(Side::Left, game.left_end, fit_left) }
                     <span class="status">{ &status }</span>
-                    <span class="end">
-                        { game.right_end.map(|p| format!("{p} ▶")).unwrap_or_else(|| "– ▶".to_owned()) }
-                    </span>
+                    { end_button(Side::Right, game.right_end, fit_right) }
                 </div>
                 <div class="chain" ref={chain_ref}>
                     if game.board.is_empty() {
@@ -187,15 +249,59 @@ pub fn game_view(props: &Props) -> Html {
         </div>
     };
 
+    // Placement bar: shown while a tile is picked, between board and hand so
+    // the chain stays visible while the end is chosen.
+    let place_bar = picked.map(|tile| {
+        let open_table = {
+            let on_place = on_place.clone();
+            Callback::from(move |_: MouseEvent| on_place.emit(Side::Right))
+        };
+        html! {
+            <div class="place-bar card">
+                <div class="place-head">
+                    <Domino tile={tile} size={DominoSize::Board} />
+                    <span class="place-hint">{
+                        if game.board.is_empty() { "Opens the table" } else { "Play it on…" }
+                    }</span>
+                    <button class="btn btn-ghost place-cancel" onclick={on_cancel.clone()}>
+                        {"Cancel"}
+                    </button>
+                </div>
+                <div class="place-row">
+                    if game.board.is_empty() {
+                        <button class="btn btn-primary" onclick={open_table}>
+                            {"Open the table"}
+                        </button>
+                    } else {
+                        { for spots.iter().map(|spot| {
+                            let on_place = on_place.clone();
+                            let side = spot.side;
+                            let title = match side {
+                                Side::Left => format!("◀ {}", spot.end_pip),
+                                Side::Right => format!("{} ▶", spot.end_pip),
+                            };
+                            html! {
+                                <button class="btn btn-primary place-end"
+                                        onclick={Callback::from(move |_: MouseEvent| on_place.emit(side))}>
+                                    <span class="place-end-pip">{ title }</span>
+                                    <span class="place-end-reads">{ format!("reads {}", spot.reads) }</span>
+                                </button>
+                            }
+                        }) }
+                    }
+                </div>
+            </div>
+        }
+    });
+
     let hand_row = html! {
         <div class="hand">
             <div class="hand-label">{format!("Your hand · {} tiles", hand.len())}</div>
             <div class="hand-row">
                 { for hand.iter().map(|t| {
                     let tile = *t;
-                    let f = fit(tile, &game);
-                    let playable = my_turn && f.any();
-                    let picked = *selected == Some(tile);
+                    let playable = my_turn && fit(tile, &game).any();
+                    let picked_tile = picked == Some(tile);
                     let on = {
                         let on_tile = on_tile.clone();
                         Callback::from(move |_: MouseEvent| on_tile.emit(tile))
@@ -203,7 +309,7 @@ pub fn game_view(props: &Props) -> Html {
                     html! {
                         <button class={classes!("hand-tile",
                             playable.then_some("playable"),
-                            picked.then_some("picked"))}
+                            picked_tile.then_some("picked"))}
                             onclick={on}>
                             <Domino tile={tile} size={DominoSize::Hand} />
                         </button>
@@ -240,37 +346,6 @@ pub fn game_view(props: &Props) -> Html {
         }
     };
 
-    // End picker: shown only when the picked tile fits both ends.
-    let picker = selected.as_ref().map(|tile| {
-        let on_left = {
-            let pick_end = pick_end.clone();
-            Callback::from(move |_: MouseEvent| pick_end.emit(Side::Left))
-        };
-        let on_right = {
-            let pick_end = pick_end.clone();
-            Callback::from(move |_: MouseEvent| pick_end.emit(Side::Right))
-        };
-        html! {
-            <div class="scrim">
-                <div class="picker card">
-                    <p>{"Play this tile on which end?"}</p>
-                    <div class="picker-tile">
-                        <Domino tile={*tile} size={DominoSize::Board} />
-                    </div>
-                    <div class="picker-row">
-                        <button class="btn btn-primary" onclick={on_left}>
-                            { game.left_end.map(|p| format!("◀ {p}")).unwrap_or_default() }
-                        </button>
-                        <button class="btn btn-primary" onclick={on_right}>
-                            { game.right_end.map(|p| format!("{p} ▶")).unwrap_or_default() }
-                        </button>
-                    </div>
-                    <button class="btn btn-ghost" onclick={cancel_pick.clone()}>{"Cancel"}</button>
-                </div>
-            </div>
-        }
-    });
-
     let offline = matches!(api.state.socket, SocketState::Reconnecting)
         .then(|| html! { <div class="offline-bar">{"Connection lost — reconnecting…"}</div> });
 
@@ -280,10 +355,10 @@ pub fn game_view(props: &Props) -> Html {
             { offline }
             <div class="page game">
                 { table }
+                { place_bar.unwrap_or_default() }
                 { hand_row }
                 { actions }
             </div>
-            { picker.unwrap_or_default() }
         </>
     }
 }

@@ -11,6 +11,9 @@ mod view;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use wasm_bindgen::JsValue;
+use web_sys;
+
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -50,6 +53,7 @@ impl Api {
         let name = name.trim().to_owned();
         self.state.dispatch(Msg::JoinRoom { room: room.clone(), name: name.clone() });
         state::persist_inputs(&name, &self.state.ws_url);
+        sync_room_url(Some(&room));
 
         let on_event = {
             let state = self.state.clone();
@@ -97,7 +101,24 @@ impl Api {
         }
         *self.session.borrow_mut() = None;
         self.state.dispatch(Msg::LeaveRoom);
+        sync_room_url(None);
     }
+}
+
+/// Keep the browser address bar in sync with the room we are seated in, so
+/// copying the page URL (or sharing it from the OS) carries the `?room=CODE`
+/// query string that makes the link jump straight to the right table.
+fn sync_room_url(code: Option<&str>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(history) = window.history() else { return };
+    let location = window.location();
+    let origin = location.origin().unwrap_or_default();
+    let path = location.pathname().unwrap_or_default();
+    let url = match code {
+        Some(code) => format!("{origin}{path}?room={}", roomcode::urlencode(code)),
+        None => format!("{origin}{path}"),
+    };
+    let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&url));
 }
 
 #[function_component(App)]

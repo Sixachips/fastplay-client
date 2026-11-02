@@ -22,6 +22,7 @@ web-sys = { version = "0.3", features = [
     "UrlSearchParams",
     "HtmlInputElement",
     "Clipboard",
+    "History",
     "ShareData",
     "Element",
 ] }

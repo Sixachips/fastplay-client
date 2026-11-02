@@ -42,7 +42,7 @@ pub fn share_link(code: &str) -> String {
 }
 
 /// Percent-encode the few characters a room code could contain beyond alnum.
-fn urlencode(input: &str) -> String {
+pub fn urlencode(input: &str) -> String {
     js_sys::encode_uri_component(input)
         .as_string()
         .unwrap_or_else(|| input.to_owned())

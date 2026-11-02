@@ -180,12 +180,14 @@ pub fn game_view(props: &Props) -> Html {
         let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
         let count = game.hand_counts.get(seat).copied().unwrap_or(0);
         let active = !over && game.turn == seat;
-        let side = match seat {
-            0 => "North",
-            1 => "East",
-            2 => "South",
-            3 => "West",
-            _ => "North",
+        // Seats are placed relative to you: play passes to the right (CCW),
+        // so the next turn sits east, your partner sits across, and the seat
+        // that played before you sits west.
+        let side = match (seat + 4 - you) % 4 {
+            0 => "You",
+            1 => "Right",
+            2 => "Partner",
+            _ => "Left",
         };
         let team = match seat {
             0 | 2 => "team-north-south",
@@ -226,8 +228,8 @@ pub fn game_view(props: &Props) -> Html {
 
     let table = html! {
         <div class="table">
-            <div class="table-north">{ player_card(0) }</div>
-            <div class="table-west">{ player_card(3) }</div>
+            <div class="table-north">{ player_card((you + 2) % 4) }</div>
+            <div class="table-west">{ player_card((you + 3) % 4) }</div>
             <div class="table-board board card">
                 <div class="ends">
                     { end_button(Side::Left, game.left_end, fit_left) }
@@ -244,8 +246,8 @@ pub fn game_view(props: &Props) -> Html {
                     }
                 </div>
             </div>
-            <div class="table-east">{ player_card(1) }</div>
-            <div class="table-south">{ player_card(2) }</div>
+            <div class="table-east">{ player_card((you + 1) % 4) }</div>
+            <div class="table-south">{ player_card(you) }</div>
         </div>
     };
 

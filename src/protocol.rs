@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const SEAT_COUNT: usize = 4;
 
+
 /// Which end of the linear board a tile is played on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

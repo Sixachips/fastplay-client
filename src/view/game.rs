@@ -11,7 +11,6 @@ use yew::prelude::*;
 use crate::legality::{fit, has_playable};
 use crate::protocol::{
     ClientToServer, EndReason, GameResult, PublicRoomState, PublicTile, Side,
-    SEAT_COUNT,
 };
 use crate::session::SocketState;
 use crate::view::domino::{Domino, DominoSize};
@@ -128,49 +127,63 @@ pub fn game_view(props: &Props) -> Html {
         format!("{name} is playing…")
     };
 
-    let players = html! {
-        <div class="players">
-            { for (0..SEAT_COUNT).map(|seat| {
-                let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
-                let count = game.hand_counts.get(seat).copied().unwrap_or(0);
-                let active = !over && game.turn == seat;
-                html! {
-                    <div class={classes!("player",
-                        active.then_some("active"),
-                        (seat == you).then_some("self"),
-                        occupant.is_none().then_some("gone"))}>
-                        <span class="player-name">
-                            { occupant.map(|o| o.name.clone()).unwrap_or_else(|| "—".to_owned()) }
-                        </span>
-                        <span class="player-count">
-                            { if occupant.is_some() { count.to_string() } else { "✕".to_owned() } }
-                        </span>
-                    </div>
-                }
-            }) }
-        </div>
+    let player_card = |seat: usize| -> Html {
+        let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
+        let count = game.hand_counts.get(seat).copied().unwrap_or(0);
+        let active = !over && game.turn == seat;
+        let side = match seat {
+            0 => "North",
+            1 => "East",
+            2 => "South",
+            3 => "West",
+            _ => "North",
+        };
+        let team = match seat {
+            0 | 2 => "team-north-south",
+            _ => "team-east-west",
+        };
+        html! {
+            <div class={classes!("player", team,
+                active.then_some("active"),
+                (seat == you).then_some("self"),
+                occupant.is_none().then_some("gone"))}>
+                <span class="player-side">{side}</span>
+                <span class="player-name">
+                    { occupant.map(|o| o.name.clone()).unwrap_or_else(|| "—".to_owned()) }
+                </span>
+                <span class="player-count">
+                    { if occupant.is_some() { count.to_string() } else { "✕".to_owned() } }
+                </span>
+            </div>
+        }
     };
 
-    let board = html! {
-        <div class="board card">
-            <div class="ends">
-                <span class="end">
-                    { game.left_end.map(|p| format!("◀ {p}")).unwrap_or_else(|| "◀ –".to_owned()) }
-                </span>
-                <span class="status">{ &status }</span>
-                <span class="end">
-                    { game.right_end.map(|p| format!("{p} ▶")).unwrap_or_else(|| "– ▶".to_owned()) }
-                </span>
+    let table = html! {
+        <div class="table">
+            <div class="table-north">{ player_card(0) }</div>
+            <div class="table-west">{ player_card(3) }</div>
+            <div class="table-board board card">
+                <div class="ends">
+                    <span class="end">
+                        { game.left_end.map(|p| format!("◀ {p}")).unwrap_or_else(|| "◀ –".to_owned()) }
+                    </span>
+                    <span class="status">{ &status }</span>
+                    <span class="end">
+                        { game.right_end.map(|p| format!("{p} ▶")).unwrap_or_else(|| "– ▶".to_owned()) }
+                    </span>
+                </div>
+                <div class="chain" ref={chain_ref}>
+                    if game.board.is_empty() {
+                        <div class="chain-empty">{"The table is empty — first tile opens."}</div>
+                    } else {
+                        { for game.board.iter().map(|tile| html! {
+                            <Domino tile={*tile} size={DominoSize::Board} />
+                        }) }
+                    }
+                </div>
             </div>
-            <div class="chain" ref={chain_ref}>
-                if game.board.is_empty() {
-                    <div class="chain-empty">{"The table is empty — first tile opens."}</div>
-                } else {
-                    { for game.board.iter().map(|tile| html! {
-                        <Domino tile={*tile} size={DominoSize::Board} />
-                    }) }
-                }
-            </div>
+            <div class="table-east">{ player_card(1) }</div>
+            <div class="table-south">{ player_card(2) }</div>
         </div>
     };
 
@@ -266,8 +279,7 @@ pub fn game_view(props: &Props) -> Html {
             <TopBar api={api.clone()} />
             { offline }
             <div class="page game">
-                { players }
-                { board }
+                { table }
                 { hand_row }
                 { actions }
             </div>

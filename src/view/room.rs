@@ -70,8 +70,19 @@ pub fn room_view(props: &Props) -> Html {
     let seat_cards = (0..SEAT_COUNT).map(|seat| {
         let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
         let is_you = room.you == seat;
+        let side = match seat {
+            0 => "north",
+            1 => "east",
+            2 => "south",
+            3 => "west",
+            _ => "north",
+        };
+        let team = match seat {
+            0 | 2 => "team-north-south",
+            _ => "team-east-west",
+        };
         html! {
-            <div class={classes!("seat",
+            <div class={classes!("seat", side, team,
                 occupant.is_some().then_some("taken"),
                 is_you.then_some("you"))}>
                 <span class="seat-num">{seat + 1}</span>

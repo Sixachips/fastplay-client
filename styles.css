@@ -129,23 +129,41 @@ input[type="text"] {
 
 /* ---------- waiting room ---------- */
 .room-title { text-align: center; margin: 4px 0; }
-.seats { display: flex; flex-direction: column; gap: 8px; }
+/* Square table: seats sit on its edges */
+.seats {
+    position: relative;
+    width: min(300px, 80vw);
+    aspect-ratio: 1;
+    margin: 0 auto;
+}
 .seat {
     display: flex; align-items: center; gap: 12px;
+    position: absolute;
     background: var(--card);
     border: 1px dashed rgba(255, 255, 255, 0.18);
     border-radius: 12px;
-    padding: 12px;
-    min-height: 54px;
+    padding: 10px 12px;
+    min-width: 128px;
+    min-height: 52px;
+    transition: border-color 0.2s;
 }
-.seat.taken { border-style: solid; border-color: rgba(255, 255, 255, 0.22); }
+.seat.taken { border-style: solid; }
 .seat.you { border-color: var(--amber); }
+.seat.north { top: 0; left: 50%; transform: translate(-50%, 0); }
+.seat.south { bottom: 0; left: 50%; transform: translate(-50%, 0); }
+.seat.east { right: 0; top: 50%; transform: translate(0, -50%); }
+.seat.west { left: 0; top: 50%; transform: translate(0, -50%); }
+/* Team color coding - North+South are one team, East+West are the other */
+.seat.north, .seat.south { border-color: #e5484d; /* red team */ }
+.seat.east, .seat.west { border-color: #f4a911; /* yellow team */ }
+.seat.you { box-shadow: 0 0 8px rgba(244, 169, 17, 0.55); }
 .seat-num {
     width: 26px; height: 26px; border-radius: 50%;
     background: rgba(0, 0, 0, 0.3);
     display: grid; place-items: center;
     font-size: 13px; color: var(--text-dim);
     flex: none;
+    font-weight: bold;
 }
 .seat-name { font-weight: 700; font-size: 16px; }
 .seat-you {
@@ -166,7 +184,26 @@ input[type="text"] {
 /* ---------- game ---------- */
 .game { gap: 10px; }
 
-.players { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+/* Table layout: players sit around the board
+   (seat 0 = North top, 1 = East right, 2 = South bottom, 3 = West left) */
+.table {
+    display: grid;
+    grid-template-areas:
+        ". north ."
+        "west board east"
+        ". south .";
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto 1fr auto;
+    gap: 8px;
+    align-items: stretch;
+}
+.table-north { grid-area: north; }
+.table-south { grid-area: south; }
+.table-east { grid-area: east; }
+.table-west { grid-area: west; }
+.table-board { grid-area: board; min-width: 0; }
+.table .player { min-width: 84px; position: relative; }
+
 .player {
     background: var(--card);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -178,12 +215,28 @@ input[type="text"] {
 .player.active { border-color: var(--amber); box-shadow: 0 0 10px rgba(244, 169, 17, 0.45); }
 .player.self { background: #14614a; }
 .player.gone { opacity: 0.45; }
+.player.team-north-south { border-color: #e5484d; /* red team */ }
+.player.team-east-west { border-color: #f4a911; /* yellow team */ }
 .player-name {
     display: block;
     font-size: 12px; font-weight: 700;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .player-count { display: block; font-size: 15px; color: var(--text-dim); }
+.player-side {
+    position: absolute;
+    top: 4px; right: 4px;
+    font-size: 10px; font-weight: bold;
+    color: var(--amber);
+    text-transform: uppercase;
+}
+
+@media (max-width: 480px) {
+    .table { gap: 6px; }
+    .table .player { min-width: 70px; padding: 4px 2px; min-height: 44px; }
+    .player-name { font-size: 11px; }
+    .player-count { font-size: 13px; }
+}
 
 .board { display: flex; flex-direction: column; gap: 8px; }
 .ends { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -297,3 +350,4 @@ input[type="text"] {
 }
 .toast-warn { background: var(--danger); color: white; }
 .toast-info { background: var(--amber); color: #221a00; }
+

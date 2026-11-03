@@ -66,6 +66,11 @@ pub enum ClientToServer {
     JoinRoom { room: String, name: String },
     PlayTile { tile: PublicTile, side: Side },
     PassTurn,
+    /// "Play again": this seated player is ready for the next game. When a
+    /// full table of four ready seats shares a finished (or absent) game,
+    /// the room deals a fresh one in place — no socket cycling, so no seat
+    /// can be held hostage by a stale connection.
+    PlayAgain,
 }
 
 /// Outbound messages from the server.
@@ -105,6 +110,8 @@ pub struct PublicSeat {
     pub seat: u8,
     pub player_id: u64,
     pub name: String,
+    /// Whether this player has tapped "Play again" since the last deal.
+    pub ready: bool,
 }
 
 /// Personalized snapshot of a room (`you` = recipient's seat).

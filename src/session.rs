@@ -133,9 +133,11 @@ async fn run(
                                             break Outcome::Reconnect("send failed".to_string());
                                         }
                                     }
-                                    None => {} // No command yet, continue waiting
-                                    // Explicit Leave, or every `Session`
-                                    // handle was dropped: stop for good.
+                                    // `None` means every `Session` handle was
+                                    // dropped (the loop outlived its owner):
+                                    // stop for good, exactly like Leave does.
+                                    None => break Outcome::Stop,
+                                    // Explicit Leave.
                                     _ => break Outcome::Stop,
                                 }
                             }

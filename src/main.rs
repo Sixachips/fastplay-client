@@ -67,6 +67,13 @@ impl Api {
     pub fn join(&self, room: String, name: String) {
         let room = room.trim().to_owned();
         let name = name.trim().to_owned();
+        // Close any previous socket *before* the fresh one starts joining:
+        // the server frees a seat only when it sees the old connection close,
+        // and a lingering stale seat would bounce this join with "all four
+        // seats taken".
+        if let Some(previous) = self.session.borrow_mut().as_mut() {
+            previous.leave();
+        }
         self.state.dispatch(Msg::JoinRoom { room: room.clone(), name: name.clone() });
         state::persist_inputs(&name, &self.state.ws_url);
         sync_room_url(Some(&room));
@@ -111,12 +118,12 @@ impl Api {
         }
     }
 
-    /// Play again: cycle the socket to re-claim our seat. The server deals a
-    /// fresh game to the whole table the moment the fourth seat lands.
+    /// Play again: signal readiness on the *existing* socket. The room
+    /// re-deals in place as soon as all four seated players have tapped —
+    /// cycling the socket instead would race the server's seat release and
+    /// make the fresh join bounce off "all four seats taken".
     pub fn play_again(&self) {
-        if let Some(target) = self.state.target.clone() {
-            self.join(target.room, target.name);
-        }
+        self.send_cmd(ClientToServer::PlayAgain);
     }
 
     /// Leave the room: stop reconnecting and go home.

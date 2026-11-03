@@ -13,7 +13,8 @@ use yew::prelude::*;
 
 use crate::legality::{fit, has_playable, open_ends};
 use crate::protocol::{
-    ClientToServer, EndReason, GameResult, PublicGameState, PublicRoomState, PublicTile, Side,
+    ClientToServer, EndReason, GameResult, PublicGameState, PublicRoomState, PublicTile, SEAT_COUNT,
+    Side,
 };
 use crate::session::SocketState;
 use crate::state::{Msg, ToastKind};
@@ -360,18 +361,38 @@ pub fn game_view(props: &Props) -> Html {
 
     let actions = if let Some(result) = &game.result {
         let (title, subtitle) = result_text(result, &room, you);
+        // Rematch readiness lives on the roster: tapping sends `PlayAgain`
+        // and the server's echo marks this seat ready. The deal lands when
+        // the whole table is ready — no socket cycling, no "seats taken".
+        let i_am_ready = room.seats.iter().any(|s| s.seat as usize == you && s.ready);
+        let ready_count = room.seats.iter().filter(|s| s.ready).count();
+        let seats_here = room.seats.len();
+        let hint = if seats_here < SEAT_COUNT {
+            format!(
+                "{seats_here} of {SEAT_COUNT} seats are at the table — the next game deals \
+                 as soon as the empty seats are filled and everyone taps \u{201c}Play again\u{201d}.",
+            )
+        } else if i_am_ready {
+            format!(
+                "{ready_count} of {seats_here} seats are ready — dealing the moment the table is complete.",
+            )
+        } else {
+            format!(
+                "Tap \u{201c}Play again\u{201d} when you are ready \u{2014} {ready_count} of \
+                 {seats_here} seats are already waiting.",
+            )
+        };
         html! {
             <div class="banner card">
                 <h3>{ title }</h3>
                 if let Some(subtitle) = subtitle { <p>{ subtitle }</p> }
-                <p class="hint">
-                    { format!(
-                        "{} of 4 seats are back at the table — everyone taps \u{201c}Play again\u{201d}, and the next game deals as soon as all four seats are filled.",
-                        room.seats.len()
-                    ) }
-                </p>
+                <p class="hint">{ hint }</p>
                 <div class="banner-buttons">
-                    <button class="btn btn-primary" onclick={on_play_again}>{"Play again"}</button>
+                    if i_am_ready {
+                        <button class="btn btn-primary" disabled={true}>{"Waiting for players…"}</button>
+                    } else {
+                        <button class="btn btn-primary" onclick={on_play_again}>{"Play again"}</button>
+                    }
                     <button class="btn btn-ghost" onclick={on_leave}>{"Leave"}</button>
                 </div>
             </div>

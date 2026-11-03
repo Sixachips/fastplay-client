@@ -252,7 +252,9 @@ input[type="text"] {
     display: flex; gap: 4px; align-items: center;
     overflow-x: auto;
     padding: 6px 2px;
-    min-height: 60px;
+    /* Tall enough for a double standing across the row, so the chain never
+       jumps when the first one lands. */
+    min-height: 76px;
 }
 .chain-empty { color: var(--text-dim); font-style: italic; margin: 0 auto; }
 
@@ -284,6 +286,12 @@ input[type="text"] {
 .domino-hand { border-radius: 8px; }
 .domino-hand .domino-half { width: 24px; }
 
+/* A double lies across the chain: halves stack, the divider turns with them,
+   and the tile keeps the same footprint it would have lengthwise. */
+.domino-cross { flex-direction: column; }
+.domino-cross .domino-half { transform: rotate(90deg); }
+.domino-cross .domino-sep { width: auto; height: 3px; }
+
 /* hand */
 .hand-label { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
 .hand-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -310,6 +318,14 @@ input[type="text"] {
 .banner p { margin: 4px 0; }
 .banner-buttons { display: flex; gap: 10px; margin-top: 10px; }
 .banner-buttons .btn { flex: 1; }
+
+/* ---------- closed game: every hand revealed ---------- */
+.reveal { border-color: var(--amber); display: flex; flex-direction: column; gap: 10px; }
+.reveal-head { font-weight: 800; color: var(--amber); text-align: center; }
+.reveal-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.reveal-name { font-weight: 700; font-size: 14px; }
+.reveal-pips { font-size: 12px; color: var(--text-dim); }
+.reveal-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ---------- placement: pick a tile, then choose its end ---------- */
 /* The board ends double as tap targets while a tile is picked. */

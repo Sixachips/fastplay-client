@@ -246,7 +246,8 @@ pub fn game_view(props: &Props) -> Html {
                         <div class="chain-empty">{"The table is empty — first tile opens."}</div>
                     } else {
                         { for game.board.iter().map(|tile| html! {
-                            <Domino tile={*tile} size={DominoSize::Board} />
+                            <Domino tile={*tile} size={DominoSize::Board}
+                                    crosswise={tile.is_double()} />
                         }) }
                     }
                 </div>

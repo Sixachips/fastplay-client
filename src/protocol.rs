@@ -32,6 +32,12 @@ impl PublicTile {
         self.left == end || self.right == end
     }
 
+    /// Whether both halves show the same pip. Doubles are the tiles that lie
+    /// across the chain instead of in line with it.
+    pub fn is_double(&self) -> bool {
+        self.left == self.right
+    }
+
     /// The pip to expose outward when appending this tile to an end
     /// currently showing `end` (i.e. the half that does NOT touch the chain).
     pub fn outer_pip_at(&self, end: u8) -> u8 {
@@ -173,5 +179,21 @@ pub struct PublicGameState {
 impl PublicGameState {
     pub fn is_over(&self) -> bool {
         self.result.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The board chain draws doubles across the row, so the check must follow
+    /// the pips and not the orientation the tile was played in.
+    #[test]
+    fn doubles_are_recognised_whichever_way_they_lie() {
+        for pip in 0..=6 {
+            assert!(PublicTile { left: pip, right: pip }.is_double());
+        }
+        assert!(!PublicTile { left: 5, right: 6 }.is_double());
+        assert!(!PublicTile { left: 6, right: 5 }.is_double());
     }
 }

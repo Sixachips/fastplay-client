@@ -1,4 +1,7 @@
 //! A domino drawn as two pip squares, pure CSS (3×3 dot grids).
+//!
+//! `crosswise` stands the tile up at 90° so it lies across the row — what the
+//! table does with a double.
 
 use yew::prelude::*;
 
@@ -17,6 +20,11 @@ pub struct Props {
     pub tile: PublicTile,
     #[prop_or(DominoSize::Board)]
     pub size: DominoSize,
+    /// Turn the tile end over end so it stands across the row — how a double
+    /// sits on a real table. Asked for by the board chain only; tiles still in
+    /// a hand, and the one being held over the placement bar, stay lengthwise.
+    #[prop_or(false)]
+    pub crosswise: bool,
     #[prop_or_default]
     pub classes: Classes,
 }
@@ -53,7 +61,12 @@ pub fn domino(props: &Props) -> Html {
         DominoSize::Board => "domino-board",
     };
     html! {
-        <div class={classes!("domino", size_class, props.classes.clone())}>
+        <div class={classes!(
+            "domino",
+            size_class,
+            props.crosswise.then_some("domino-cross"),
+            props.classes.clone()
+        )}>
             { half(props.tile.left) }
             <div class="domino-sep" />
             { half(props.tile.right) }

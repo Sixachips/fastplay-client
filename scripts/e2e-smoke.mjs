@@ -1,6 +1,7 @@
 // Headless smoke test for the fastPlay wire protocol (run with node ≥ 21).
-// Joins 4 players, plays a full game to the end, then checks the
-// disconnect / rejoin / redeal flows — the same paths the WASM client uses.
+// Joins 4 players, plays a full game to the end, runs the in-place
+// PlayAgain rematch, then checks the disconnect / rejoin / redeal flows —
+// the same paths the WASM client uses.
 //
 //   cd server && cargo run              # terminal 1
 //   node client/scripts/e2e-smoke.mjs   # terminal 2
@@ -14,6 +15,7 @@ function connect(name) {
     roomState: null,
     hand: [],
     game: null,
+    closed: null,
     rejections: [],
     open: new Promise((r) => (ws.onopen = r)),
   };
@@ -22,6 +24,7 @@ function connect(name) {
     if (m.type === 'RoomState') p.roomState = m.room;
     if (m.type === 'HandDealt') p.hand = m.hand;
     if (m.type === 'GameStateUpdate') p.game = m.state;
+    if (m.type === 'GameClosed') p.closed = m.hands;
     if (m.type === 'MoveRejected') p.rejections.push(m.reason);
   };
   p.send = (o) => ws.send(JSON.stringify(o));
@@ -108,6 +111,51 @@ if (final.board.length + inHands !== 28) {
 }
 console.log(`OK: finished after ${moves} moves / ${passes} passes, result=${JSON.stringify(final.result)}`);
 console.log(`OK: tile conservation: board ${final.board.length} + hands ${inHands} = 28`);
+
+// A closed (blocked) game notifies every seat and reveals all hands; a game
+// won by playing out reveals nothing, so no seat may have a GameClosed.
+const tileKey = (t) => [t.left, t.right].sort((a, b) => a - b).join('-');
+if (final.result.reason === 'blocked') {
+  // Delivery to the other sockets is still in flight when the loop ends: give
+  // every seat a moment to receive the closing update and its reveal.
+  await waitAll(players, (p) => p.game.result && p.closed, 6000, 'GameClosed at every seat');
+  for (const p of players) {
+    if (!p.closed) throw new Error(p.name + ' was not told the game closed');
+    if (p.closed.length !== 4) throw new Error(p.name + ' saw ' + p.closed.length + ' revealed hands, expected 4');
+    const mine = p.closed.find((h) => h.seat === p.roomState.you);
+    const shown = (mine?.hand || []).map(tileKey).sort().join(',');
+    const held = p.hand.map(tileKey).sort().join(',');
+    if (shown !== held) throw new Error(p.name + ': revealed hand does not match its own tiles');
+  }
+  const totalRevealed = players[0].closed.reduce((n, h) => n + h.hand.length, 0);
+  if (totalRevealed !== inHands) {
+    throw new Error('revealed tiles (' + totalRevealed + ') differ from tiles still held (' + inHands + ')');
+  }
+  console.log(`OK: blocked game notified all four seats and revealed ${totalRevealed} held tiles`);
+} else if (players.some((p) => p.closed)) {
+  throw new Error('a played-out game must not reveal hands');
+}
+
+// Every seat must have observed the finished game before the rematch phase.
+await waitAll(players, (p) => p.game && p.game.result, 5000, 'final result at every seat');
+
+// Play again: all four signal readiness on their *live* sockets — no socket
+// cycling — and the room must redeal the same seats in place.
+players[0].send({ type: 'PlayAgain' });
+await waitAll(players, (p) => p.roomState.seats.some((s) => s.ready), 5000, 'first PlayAgain flag');
+if (players.some((p) => p.game.result === null)) {
+  throw new Error('the table redealt before all four seats were ready');
+}
+for (const p of players.slice(1)) p.send({ type: 'PlayAgain' });
+await waitAll(
+  players,
+  (p) =>
+    p.game && p.game.result === null && p.game.board.length === 0 &&
+    p.hand.length === 7 && p.roomState.seats.every((s) => !s.ready),
+  8000,
+  'in-place redeal after four PlayAgain taps'
+);
+console.log('OK: four PlayAgain taps re-dealt a fresh game to the same four seats');
 
 // Disconnect frees the seat and everyone sees it.
 const gone = players.pop();

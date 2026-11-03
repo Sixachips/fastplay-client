@@ -15,7 +15,9 @@ use serde::{Deserialize, Serialize};
 use yew::Reducible;
 
 use crate::legality::same_tile;
-use crate::protocol::{ClientToServer, PublicGameState, PublicRoomState, PublicTile, ServerToClient};
+use crate::protocol::{
+    ClientToServer, ClosedHand, PublicGameState, PublicRoomState, PublicTile, ServerToClient,
+};
 use crate::session::{SocketEvent, SocketState};
 
 pub const MAX_ROOM_LEN: usize = 16; // server: MAX_ROOM_CODE_LEN
@@ -66,6 +68,10 @@ pub struct AppState {
     pub room: Option<PublicRoomState>,
     pub hand: Vec<PublicTile>,
     pub game: Option<PublicGameState>,
+    /// Every seat's remaining tiles, revealed when a game closes (nobody can
+    /// put a tile). Kept until the next deal or leave so the board can show
+    /// what each player was holding.
+    pub reveal: Option<Vec<ClosedHand>>,
 
     // ---- transient UI ----
     pub toast: Option<Toast>,
@@ -158,6 +164,7 @@ fn reduce(state: &mut AppState, msg: Msg) {
             state.room = None;
             state.hand = Vec::new();
             state.game = None;
+            state.reveal = None;
             state.socket = SocketState::Connecting;
         }
 
@@ -166,6 +173,7 @@ fn reduce(state: &mut AppState, msg: Msg) {
             state.room = None;
             state.hand = Vec::new();
             state.game = None;
+            state.reveal = None;
             state.socket = SocketState::Offline;
             state.toast = None;
         }
@@ -189,7 +197,23 @@ fn reduce(state: &mut AppState, msg: Msg) {
                 ServerToClient::GameStateUpdate { state: game } => {
                     let you = state.room.as_ref().map(|room| room.you);
                     sync_hand(&mut state.hand, state.game.as_ref(), &game, you);
+                    // A live snapshot (no result, or a result that is not a
+                    // close) retires any earlier reveal; a closed game keeps
+                    // its hands until the next deal.
+                    if !game.result.is_some_and(|result| result.is_closed()) {
+                        state.reveal = None;
+                    }
                     state.game = Some(game)
+                }
+                ServerToClient::GameClosed { hands } => {
+                    // Nobody can put a tile: keep every hand visible and say
+                    // so out loud so the end of the game is not mistaken for a
+                    // stall.
+                    state.reveal = Some(hands);
+                    state.set_toast(
+                        ToastKind::Info,
+                        "Game closed — nobody could play. All hands are shown.".to_owned(),
+                    );
                 }
                 ServerToClient::MoveRejected { reason } => {
                     state.set_toast(ToastKind::Warn, reason)
@@ -293,6 +317,7 @@ pub fn initial() -> AppState {
         room: None,
         hand: Vec::new(),
         game: None,
+        reveal: None,
         toast: None,
         toast_nonce: 0,
     }
@@ -310,6 +335,94 @@ mod tests {
 
     fn tile(left: u8, right: u8) -> PublicTile {
         PublicTile { left, right }
+    }
+
+    /// A minimal seated app state for reducer tests. `initial()` touches
+    /// browser storage, so host tests build the struct directly instead.
+    fn seated() -> AppState {
+        AppState {
+            name: "Ada".into(),
+            room_input: "a".into(),
+            ws_url: "ws://h/ws".into(),
+            target: None,
+            socket: SocketState::Online,
+            room: Some(PublicRoomState {
+                room_id: "a".into(),
+                you: 0,
+                phase: crate::protocol::RoomPhase::Playing,
+                seats: vec![],
+            }),
+            hand: Vec::new(),
+            game: None,
+            reveal: None,
+            toast: None,
+            toast_nonce: 0,
+        }
+    }
+
+    fn closed_result() -> crate::protocol::GameResult {
+        crate::protocol::GameResult {
+            winner: Some(0),
+            reason: crate::protocol::EndReason::Blocked,
+        }
+    }
+
+    #[test]
+    fn a_closed_game_reveals_every_hand_and_notifies() {
+        let mut state = seated();
+        let mut closing = view(&[], 0, [1, 1, 1, 1]);
+        closing.result = Some(closed_result());
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing })),
+        );
+        assert!(state.reveal.is_none(), "the reveal only lands with its own message");
+
+        let hands = vec![
+            ClosedHand { seat: 0, hand: vec![tile(0, 0)] },
+            ClosedHand { seat: 1, hand: vec![tile(1, 1)] },
+        ];
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameClosed { hands: hands.clone() })),
+        );
+        assert_eq!(state.reveal, Some(hands), "every hand is kept for the board");
+        assert!(matches!(state.toast.as_ref().map(|t| t.kind), Some(ToastKind::Info)));
+    }
+
+    #[test]
+    fn the_reveal_survives_a_stale_closed_snapshot_but_not_a_live_game() {
+        let mut state = seated();
+        let mut closing = view(&[], 0, [1, 1, 1, 1]);
+        closing.result = Some(closed_result());
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing.clone() })),
+        );
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameClosed {
+                hands: vec![ClosedHand { seat: 0, hand: vec![tile(0, 0)] }],
+            })),
+        );
+        assert!(state.reveal.is_some());
+
+        // The terminating snapshot is re-sent (a reconnect), still closed: the
+        // hands stay revealed.
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing })),
+        );
+        assert!(state.reveal.is_some(), "a closed snapshot does not retire its own reveal");
+
+        // The next deal is live, so the reveal goes away.
+        reduce(
+            &mut state,
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate {
+                state: view(&[], 1, [7, 7, 7, 7]),
+            })),
+        );
+        assert!(state.reveal.is_none(), "a fresh live game hides hands again");
     }
 
     /// A snapshot built the way the server builds it: the chain carries the

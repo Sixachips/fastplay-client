@@ -75,8 +75,19 @@ pub enum ServerToClient {
     RoomState { room: PublicRoomState },
     HandDealt { seat: u8, hand: Vec<PublicTile> },
     GameStateUpdate { state: PublicGameState },
+    /// The game closed: every seat passed in a row, so nobody can put a tile.
+    /// Broadcast to all seats right after the terminating `GameStateUpdate`,
+    /// with every player's remaining tiles revealed to everyone.
+    GameClosed { hands: Vec<ClosedHand> },
     MoveRejected { reason: String },
     OpponentDisconnected { player: String, seat: u8 },
+}
+
+/// One seat's remaining tiles, made public when the game closes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClosedHand {
+    pub seat: u8,
+    pub hand: Vec<PublicTile>,
 }
 
 /// Lifecycle of a room.
@@ -123,6 +134,14 @@ pub struct GameResult {
     /// Winning seat, or `None` for a draw.
     pub winner: Option<usize>,
     pub reason: EndReason,
+}
+
+impl GameResult {
+    /// Whether the game closed: it ended blocked, with no seat able to put a
+    /// tile. A closed game reveals every remaining hand to every player.
+    pub fn is_closed(self) -> bool {
+        self.reason == EndReason::Blocked
+    }
 }
 
 /// Full public game view broadcast after every accepted move or pass.

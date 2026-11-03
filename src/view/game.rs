@@ -164,7 +164,11 @@ pub fn game_view(props: &Props) -> Html {
     }
 
     let status = if over {
-        "Game over".to_owned()
+        if game.result.is_some_and(|result| result.is_closed()) {
+            "Game closed".to_owned()
+        } else {
+            "Game over".to_owned()
+        }
     } else if !my_turn {
         let name = api.state.name_at(game.turn).unwrap_or("A player");
         format!("{name} is playing…")
@@ -321,6 +325,39 @@ pub fn game_view(props: &Props) -> Html {
         </div>
     };
 
+    // Closed-game reveal: when nobody could play, the server broadcasts every
+    // seat's remaining tiles. Show them face-up, grouped per player, so the
+    // pips that decided the blocked winner are visible to everyone.
+    let reveal_panel = match (&game.result, api.state.reveal.as_ref()) {
+        (Some(result), Some(hands)) if result.is_closed() && !hands.is_empty() => {
+            let rows = hands.iter().map(|entry| {
+                let seat = entry.seat as usize;
+                let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
+                let pips: u32 = entry.hand.iter().map(|t| t.left as u32 + t.right as u32).sum();
+                html! {
+                    <div class="reveal-row">
+                        <span class="reveal-name">
+                            { occupant.map(|o| o.name.clone()).unwrap_or_else(|| "—".to_owned()) }
+                        </span>
+                        <span class="reveal-pips">{ format!("{pips} pips") }</span>
+                        <span class="reveal-tiles">
+                            { for entry.hand.iter().map(|t| html! {
+                                <Domino tile={*t} size={DominoSize::Board} />
+                            }) }
+                        </span>
+                    </div>
+                }
+            });
+            html! {
+                <div class="reveal card">
+                    <div class="reveal-head">{"All hands — the game is closed"}</div>
+                    { for rows }
+                </div>
+            }
+        }
+        _ => Html::default(),
+    };
+
     let actions = if let Some(result) = &game.result {
         let (title, subtitle) = result_text(result, &room, you);
         html! {
@@ -359,6 +396,7 @@ pub fn game_view(props: &Props) -> Html {
                 { table }
                 { place_bar.unwrap_or_default() }
                 { hand_row }
+                { reveal_panel }
                 { actions }
             </div>
         </>
@@ -386,15 +424,15 @@ fn result_text(
         ),
         (Some(seat), EndReason::Blocked) => (
             if seat == you {
-                "Blocked — you win on pips! 🎉".to_owned()
+                "Game closed — you win on pips! 🎉".to_owned()
             } else {
-                format!("Blocked — {} wins on pips", winner.as_deref().unwrap_or("a player"))
+                format!("Game closed — {} wins on pips", winner.as_deref().unwrap_or("a player"))
             },
-            Some("nobody could play".to_owned()),
+            Some("nobody could put a tile".to_owned()),
         ),
         (None, EndReason::Blocked) => (
-            "Blocked — draw".to_owned(),
-            Some("nobody could play and pips were tied".to_owned()),
+            "Game closed — draw".to_owned(),
+            Some("nobody could put a tile and pips were tied".to_owned()),
         ),
         (_, EndReason::Abandoned) => (
             "Game voided".to_owned(),

@@ -52,6 +52,18 @@ for (const p of players) p.send({ type: 'JoinRoom', room, name: p.name });
 await waitAll(players, (p) => p.hand.length === 7 && p.game !== null, 8000, 'initial deal');
 console.log('OK: four private hands of 7 tiles dealt');
 
+// First hand of the session (rules.md): the 6|6 holder opens, and the 6|6 is
+// the only tile that may start the layout.
+const opening = players[0].game;
+if (opening.opening_tile?.left !== 6 || opening.opening_tile?.right !== 6) {
+  throw new Error('first hand must force the 6|6, got ' + JSON.stringify(opening.opening_tile));
+}
+const opener = players.find((p) => p.roomState.you === opening.turn);
+if (!opener?.hand.some((t) => t.left === 6 && t.right === 6)) {
+  throw new Error('the 6|6 holder must open the first hand');
+}
+console.log('OK: the 6|6 holder opens the first hand and must lay the 6|6');
+
 const unique = new Set(
   players.flatMap((p) => p.hand.map((t) => [t.left, t.right].sort((a, b) => a - b).join('-')))
 );
@@ -66,10 +78,13 @@ while (Date.now() < deadline && !players[0].game.result) {
   const actor = players.find((p) => p.roomState.you === g.turn);
   if (!actor) throw new Error('no actor for turn ' + g.turn);
 
-  // Find this actor's first legal placement (empty board opens with anything).
+  // Find this actor's first legal placement. An empty board accepts any tile
+  // except on the session's first hand, where only the forced 6|6 may open.
   let mv = null;
   for (const tile of actor.hand) {
     if (g.board.length === 0) {
+      const forced = g.opening_tile;
+      if (forced && !(tile.left === forced.left && tile.right === forced.right)) continue;
       mv = { tile, side: 'right' };
       break;
     }
@@ -156,6 +171,22 @@ await waitAll(
   'in-place redeal after four PlayAgain taps'
 );
 console.log('OK: four PlayAgain taps re-dealt a fresh game to the same four seats');
+
+// Rematch opening policy (rules.md): the previous hand's winner opens — the
+// pip-minimum seat after a blocked hand — and later hands have no forced tile.
+const redealt = players[0].game;
+if (redealt.opening_tile) throw new Error('only the first hand may force an opening tile');
+if (final.result.winner !== null) {
+  if (redealt.turn !== final.result.winner) {
+    throw new Error(
+      'rematch must be opened by the previous winner (turn ' +
+        redealt.turn + ', winner ' + final.result.winner + ')'
+    );
+  }
+  console.log('OK: the rematch is opened by the previous hand winner (seat ' + final.result.winner + ')');
+} else {
+  console.log('OK: a drawn/voided hand rotates the open with no forced tile (seat ' + redealt.turn + ')');
+}
 
 // Disconnect frees the seat and everyone sees it.
 const gone = players.pop();

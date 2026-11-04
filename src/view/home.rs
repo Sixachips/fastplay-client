@@ -105,6 +105,7 @@ pub fn home_view(props: &Props) -> Html {
                     <li>{"The table deals automatically when the fourth player joins."}</li>
                     <li>{"Tap a tile — then ◀ or ▶ to choose the end."}</li>
                     <li>{"Nothing fits? Pass."}</li>
+                    <li>{"The 6–6 holder opens the first hand with it; later hands go to the previous winner."}</li>
                     <li>{"First hand played out wins; four straight passes block the game and the fewest pips wins."}</li>
                 </ul>
             </div>

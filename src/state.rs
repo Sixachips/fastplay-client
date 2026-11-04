@@ -434,6 +434,7 @@ mod tests {
             left_end: board.first().map(|t| t.left),
             right_end: board.last().map(|t| t.right),
             hand_counts: counts,
+            opening_tile: None,
             consecutive_passes: 0,
             result: None,
         }

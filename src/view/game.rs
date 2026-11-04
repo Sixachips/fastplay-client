@@ -108,7 +108,11 @@ pub fn game_view(props: &Props) -> Html {
             if !fit(tile, &game).any() {
                 // A silent no-op reads as a broken screen: name the pips the
                 // tile failed to match, and say whether anything can go down.
-                let text = if playable_exists {
+                let text = if let Some(required) = game.opening_tile.filter(|_| game.board.is_empty())
+                {
+                    // The first hand of a session: only the 6|6 may open.
+                    format!("This hand opens with {required} — pick it to start")
+                } else if playable_exists {
                     format!("{tile} fits neither {} — try another tile", open_ends(&game))
                 } else {
                     format!("{tile} fits neither {} — you have to pass", open_ends(&game))
@@ -185,9 +189,9 @@ pub fn game_view(props: &Props) -> Html {
         let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
         let count = game.hand_counts.get(seat).copied().unwrap_or(0);
         let active = !over && game.turn == seat;
-        // Seats are placed relative to you: play passes to the right (CCW),
-        // so the next turn sits east, your partner sits across, and the seat
-        // that played before you sits west.
+        // Seats are placed relative to you: play passes counter-clockwise to
+        // the right-hand neighbour, so the next turn sits east on screen, your
+        // partner sits across, and the seat that played before you sits west.
         let side = match (seat + 4 - you) % 4 {
             0 => "You",
             1 => "Right",
@@ -269,7 +273,16 @@ pub fn game_view(props: &Props) -> Html {
                 <div class="place-head">
                     <Domino tile={tile} size={DominoSize::Board} />
                     <span class="place-hint">{
-                        if game.board.is_empty() { "Opens the table" } else { "Play it on…" }
+                        if game.board.is_empty() {
+                            match game.opening_tile {
+                                Some(required) => {
+                                    format!("This hand must be opened with {required}")
+                                }
+                                None => "Opens the table".to_owned(),
+                            }
+                        } else {
+                            "Play it on…".to_owned()
+                        }
                     }</span>
                     <button class="btn btn-ghost place-cancel" onclick={on_cancel.clone()}>
                         {"Cancel"}

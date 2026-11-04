@@ -170,6 +170,10 @@ pub struct PublicGameState {
     pub right_end: Option<u8>,
     /// Tile count per seat.
     pub hand_counts: [u8; SEAT_COUNT],
+    /// While the board is empty: the only tile the opener may lay. Set on the
+    /// first hand of a session (the 6|6 must start the layout); `None` on
+    /// every later hand, which opens with any tile.
+    pub opening_tile: Option<PublicTile>,
     /// How many passes were recorded in a row.
     pub consecutive_passes: u8,
     /// Present once the game has ended.

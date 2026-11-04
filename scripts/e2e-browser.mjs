@@ -79,7 +79,16 @@ function bot(name) {
 function playFor(b, ws) {
   const g = b.game;
   if (!g || g.result || g.turn !== b.you) return;
-  if (!g.board.length) { place(b, ws, b.hand[0], 'right'); return; }
+  if (!g.board.length) {
+    // First hand of a session: only the forced 6|6 may open; later hands
+    // accept any tile.
+    const forced = g.opening_tile;
+    const tile = forced
+      ? b.hand.find((t) => t.left === forced.left && t.right === forced.right)
+      : b.hand[0];
+    place(b, ws, tile, 'right');
+    return;
+  }
   for (const tile of b.hand) {
     if (g.right_end !== null && fits(tile, g.right_end)) { place(b, ws, tile, 'right'); return; }
     if (g.left_end !== null && fits(tile, g.left_end)) { place(b, ws, tile, 'left'); return; }

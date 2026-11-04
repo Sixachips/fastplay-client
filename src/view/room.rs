@@ -72,9 +72,9 @@ pub fn room_view(props: &Props) -> Html {
         let is_you = room.you == seat;
         let side = match seat {
             0 => "north",
-            1 => "east",
+            1 => "west",
             2 => "south",
-            3 => "west",
+            3 => "east",
             _ => "north",
         };
         let team = match seat {

@@ -185,7 +185,9 @@ input[type="text"] {
 .game { gap: 10px; }
 
 /* Table layout: players sit around the board
-   (seat 0 = North top, 1 = East right, 2 = South bottom, 3 = West left) */
+   (seat 0 = North top, 1 = West left, 2 = South bottom, 3 = East right —
+   the index order 0→1→2→3 walks counter-clockwise, passing to each
+   player's right-hand neighbour) */
 .table {
     display: grid;
     grid-template-areas:

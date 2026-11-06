@@ -5,7 +5,7 @@ edition = "2021"
 description = "Browser/PWA client for the fastPlay 4-player dominoes server"
 
 [dependencies]
-yew = { version = "0.21", features = ["csr"] }
+yew = { version = "0.23", features = ["csr"] }
 gloo-net = { version = "0.6", features = ["websocket"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
 gloo-storage = "0.3"

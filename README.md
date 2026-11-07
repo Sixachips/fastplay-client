@@ -48,7 +48,7 @@ To view the rules read [rules](https://github.com/Sixachips/fastplay-server/blob
 1. **Clone the repository** (or cd into the existing `client/` directory):
 
    ```bash
-   cd /home/rngkll/git/fastPlay/client
+   cd client
    ```
 
 2. **Install Rust dependencies**:
@@ -126,7 +126,7 @@ Example Caddyfile snippet:
 
 ```
 :80 {
-    root * /home/rngkll/git/fastPlay/client/dist
+    root * /srv/fastplay/client/dist
     encode gzip
     tls /path/to/cert.pem   # optional
 

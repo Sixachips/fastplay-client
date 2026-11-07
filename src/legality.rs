@@ -48,7 +48,10 @@ pub fn fit(tile: PublicTile, game: &PublicGameState) -> Fit {
         let opens = game
             .opening_tile
             .is_none_or(|required| same_tile(tile, required));
-        return Fit { left: opens, right: opens };
+        return Fit {
+            left: opens,
+            right: opens,
+        };
     }
     Fit {
         left: game.left_end.is_some_and(|end| tile.matches(end)),
@@ -91,7 +94,10 @@ mod tests {
         // layout, so the UI never even lets another tile be picked.
         let forced = empty_state(Some(tile(6, 6)));
         assert!(fit(tile(6, 6), &forced).any());
-        assert!(!fit(tile(6, 5), &forced).any(), "only the forced tile opens");
+        assert!(
+            !fit(tile(6, 5), &forced).any(),
+            "only the forced tile opens"
+        );
         assert!(!fit(tile(0, 0), &forced).any());
 
         // Once the opening tile is down, the board ends drive legality again.

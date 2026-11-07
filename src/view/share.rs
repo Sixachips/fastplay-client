@@ -14,26 +14,28 @@ fn has_property(obj: &JsValue, name: &str) -> bool {
 /// when the API is entirely missing (insecure context), in which case the
 /// caller falls back to manual selection.
 pub fn copy_text(text: &str) -> bool {
-    let Some(window) = web_sys::window() else { return false };
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
     let navigator = window.navigator();
     if !has_property(&JsValue::from(&navigator), "clipboard") {
         return false;
     }
     // The generated `clipboard()` binding panics on an undefined attribute,
     // so go through Reflect — the presence check above makes this safe.
-    let clipboard: web_sys::Clipboard = js_sys::Reflect::get(
-        &JsValue::from(&navigator),
-        &JsValue::from_str("clipboard"),
-    )
-    .map(|value| value.unchecked_into())
-    .unwrap();
+    let clipboard: web_sys::Clipboard =
+        js_sys::Reflect::get(&JsValue::from(&navigator), &JsValue::from_str("clipboard"))
+            .map(|value| value.unchecked_into())
+            .unwrap();
     let _ = clipboard.write_text(text);
     true
 }
 
 /// Hand the link to the OS share sheet (phones). False when unsupported.
 pub fn share_link(url: &str) -> bool {
-    let Some(window) = web_sys::window() else { return false };
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
     let navigator = window.navigator();
     if !has_property(&JsValue::from(&navigator), "share") {
         return false;

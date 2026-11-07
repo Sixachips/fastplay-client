@@ -154,6 +154,38 @@ if (final.result.reason === 'blocked') {
 // Every seat must have observed the finished game before the rematch phase.
 await waitAll(players, (p) => p.game && p.game.result, 5000, 'final result at every seat');
 
+// Partnership scoring integrity (Rules.md, standard cumulative): every seat's
+// own remaining pips must match the public hand_pips of its seat; the winner
+// banks exactly the rival partnership's pips; and the terminating snapshot —
+// including the score it carries — must be byte-identical at every socket.
+const pipSum = (ts) => ts.reduce((n, t) => n + t.left + t.right, 0);
+const shared = JSON.stringify(players[0].game);
+const res = players[0].game.result;
+for (const p of players) {
+  if (JSON.stringify(p.game) !== shared) throw new Error(p.name + ': terminating snapshot diverged');
+  const shown = p.game.result.hand_pips[p.roomState.you];
+  if (pipSum(p.hand) !== shown) {
+    throw new Error(p.name + ': hand_pips says ' + shown + ' but the hand holds ' + pipSum(p.hand));
+  }
+}
+if (res.winner_team !== null) {
+  const rival = 1 - res.winner_team;
+  const rivalPips = res.hand_pips[rival] + res.hand_pips[rival + 2];
+  if (res.points !== rivalPips) {
+    throw new Error('points must equal the rival partnership pips (' + rivalPips + '), got ' + res.points);
+  }
+  if (players[0].game.score.points[res.winner_team] !== res.points) {
+    throw new Error('the winning hand was not banked into the match score');
+  }
+  console.log('OK: team ' + res.winner_team + ' banks ' + res.points + ' points, score ' +
+    JSON.stringify(players[0].game.score.points));
+} else {
+  if (players[0].game.score.points.some((n) => n !== 0)) {
+    throw new Error('a drawn/voided hand must bank no points');
+  }
+  console.log('OK: a drawn/voided hand banks nothing');
+}
+
 // Play again: all four signal readiness on their *live* sockets — no socket
 // cycling — and the room must redeal the same seats in place.
 players[0].send({ type: 'PlayAgain' });
@@ -172,20 +204,23 @@ await waitAll(
 );
 console.log('OK: four PlayAgain taps re-dealt a fresh game to the same four seats');
 
-// Rematch opening policy (rules.md): the previous hand's winner opens — the
-// pip-minimum seat after a blocked hand — and later hands have no forced tile.
+// Rematch opening policy (Rules.md): the seat that played out opens the next
+// hand; a hand with no playing-out seat (blocked — won by a partnership on
+// combined pips — or voided) rotates one seat counter-clockwise from the
+// previous opener. Later hands never force an opening tile.
 const redealt = players[0].game;
 if (redealt.opening_tile) throw new Error('only the first hand may force an opening tile');
-if (final.result.winner !== null) {
-  if (redealt.turn !== final.result.winner) {
-    throw new Error(
-      'rematch must be opened by the previous winner (turn ' +
-        redealt.turn + ', winner ' + final.result.winner + ')'
-    );
-  }
-  console.log('OK: the rematch is opened by the previous hand winner (seat ' + final.result.winner + ')');
-} else {
-  console.log('OK: a drawn/voided hand rotates the open with no forced tile (seat ' + redealt.turn + ')');
+const expectedOpener = final.result.out !== null ? final.result.out : (opening.turn + 1) % 4;
+if (redealt.turn !== expectedOpener) {
+  throw new Error(
+    'rematch opener violated the policy: turn ' + redealt.turn +
+      ', expected ' + expectedOpener +
+      ' (out=' + final.result.out + ', previous opener=' + opening.turn + ')'
+  );
+}
+console.log('OK: the rematch opener follows the policy (seat ' + redealt.turn + ')');
+if (final.result.winner_team !== null && final.result.out === null) {
+  console.log('OK: a blocked hand is won by a partnership, so the open rotates instead of crowning a seat');
 }
 
 // Disconnect frees the seat and everyone sees it.

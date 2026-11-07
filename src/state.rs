@@ -362,7 +362,10 @@ mod tests {
 
     fn closed_result() -> crate::protocol::GameResult {
         crate::protocol::GameResult {
-            winner: Some(0),
+            out: None,
+            winner_team: Some(0),
+            points: 8,
+            hand_pips: [0, 2, 4, 6],
             reason: crate::protocol::EndReason::Blocked,
         }
     }
@@ -437,6 +440,7 @@ mod tests {
             opening_tile: None,
             consecutive_passes: 0,
             result: None,
+            score: Default::default(),
         }
     }
 

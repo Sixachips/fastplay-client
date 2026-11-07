@@ -9,6 +9,22 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub const SEAT_COUNT: usize = 4;
+/// Partnerships at the table: seats 0 & 2 (North–South) versus seats 1 & 3
+/// (West–East); teammates sit opposite each other.
+pub const TEAM_COUNT: usize = 2;
+
+/// The partnership a seat belongs to (even seats are team 0, odd seats 1).
+pub const fn team_of(seat: usize) -> usize {
+    seat % TEAM_COUNT
+}
+
+/// A partnership's readable name for the scoreboard.
+pub const fn team_name(team: usize) -> &'static str {
+    match team {
+        0 => "North–South",
+        _ => "West–East",
+    }
+}
 
 
 /// Which end of the linear board a tile is played on.
@@ -141,11 +157,20 @@ pub enum EndReason {
     Abandoned,
 }
 
-/// The final result of a game.
+/// The final result of one hand. The hand is won by a **partnership**
+/// (`Rules.md`), never by a lone seat: even when one player plays out, the
+/// points are the pips the opposing team failed to shed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameResult {
-    /// Winning seat, or `None` for a draw.
-    pub winner: Option<usize>,
+    /// The seat that emptied its hand, if anybody did (`hand_empty` endings).
+    pub out: Option<usize>,
+    /// The winning partnership, or `None` for a draw or a voided game.
+    pub winner_team: Option<u8>,
+    /// Points awarded to `winner_team` for this hand: the pips left in the
+    /// losing team's two hands.
+    pub points: u8,
+    /// Pips still held per absolute seat when the hand ended.
+    pub hand_pips: [u8; SEAT_COUNT],
     pub reason: EndReason,
 }
 
@@ -178,6 +203,34 @@ pub struct PublicGameState {
     pub consecutive_passes: u8,
     /// Present once the game has ended.
     pub result: Option<GameResult>,
+    /// Running cumulative score for the current match of hands: the first
+    /// partnership to `score.target` (100) points wins the match.
+    pub score: PublicMatchScore,
+}
+
+/// The cumulative partnership score riding on every game snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicMatchScore {
+    /// Points banked per partnership (`points[0]` is team 0, North–South).
+    pub points: [u16; TEAM_COUNT],
+    /// The target that wins the match (`Rules.md`: 100).
+    pub target: u16,
+    /// The match-winning partnership, present only once the match is over.
+    pub winner_team: Option<u8>,
+    /// Whether a partnership has reached `target`.
+    pub over: bool,
+}
+
+impl Default for PublicMatchScore {
+    /// A match that has not started: both partnerships on zero.
+    fn default() -> Self {
+        Self {
+            points: [0, 0],
+            target: 100,
+            winner_team: None,
+            over: false,
+        }
+    }
 }
 
 impl PublicGameState {

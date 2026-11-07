@@ -75,6 +75,7 @@ mod tests {
             opening_tile: opening,
             consecutive_passes: 0,
             result: None,
+            score: Default::default(),
         }
     }
 

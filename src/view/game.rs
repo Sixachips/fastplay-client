@@ -13,8 +13,8 @@ use yew::prelude::*;
 
 use crate::legality::{fit, has_playable, open_ends};
 use crate::protocol::{
-    ClientToServer, EndReason, GameResult, PublicGameState, PublicRoomState, PublicTile, SEAT_COUNT,
-    Side,
+    team_name, team_of, ClientToServer, EndReason, GameResult, PublicGameState, PublicRoomState,
+    PublicTile, Side, SEAT_COUNT,
 };
 use crate::session::SocketState;
 use crate::state::{Msg, ToastKind};
@@ -93,7 +93,9 @@ pub fn game_view(props: &Props) -> Html {
     // snapshot that ends our turn (or retires the tile) cannot leave a dangling
     // placement bar pointing at a tile that is already on the table.
     let picked = (*selected).filter(|tile| my_turn && hand.contains(tile));
-    let spots = picked.map(|tile| placements(tile, &game)).unwrap_or_default();
+    let spots = picked
+        .map(|tile| placements(tile, &game))
+        .unwrap_or_default();
     let fit_left = spots.iter().any(|spot| spot.side == Side::Left);
     let fit_right = spots.iter().any(|spot| spot.side == Side::Right);
 
@@ -108,20 +110,33 @@ pub fn game_view(props: &Props) -> Html {
             if !fit(tile, &game).any() {
                 // A silent no-op reads as a broken screen: name the pips the
                 // tile failed to match, and say whether anything can go down.
-                let text = if let Some(required) = game.opening_tile.filter(|_| game.board.is_empty())
-                {
-                    // The first hand of a session: only the 6|6 may open.
-                    format!("This hand opens with {required} — pick it to start")
-                } else if playable_exists {
-                    format!("{tile} fits neither {} — try another tile", open_ends(&game))
-                } else {
-                    format!("{tile} fits neither {} — you have to pass", open_ends(&game))
-                };
-                api.state.dispatch(Msg::ShowToast { kind: ToastKind::Warn, text });
+                let text =
+                    if let Some(required) = game.opening_tile.filter(|_| game.board.is_empty()) {
+                        // The first hand of a session: only the 6|6 may open.
+                        format!("This hand opens with {required} — pick it to start")
+                    } else if playable_exists {
+                        format!(
+                            "{tile} fits neither {} — try another tile",
+                            open_ends(&game)
+                        )
+                    } else {
+                        format!(
+                            "{tile} fits neither {} — you have to pass",
+                            open_ends(&game)
+                        )
+                    };
+                api.state.dispatch(Msg::ShowToast {
+                    kind: ToastKind::Warn,
+                    text,
+                });
                 return;
             }
             // Tap to pick it up; tap the picked tile again to put it back.
-            selected.set(if *selected == Some(tile) { None } else { Some(tile) });
+            selected.set(if *selected == Some(tile) {
+                None
+            } else {
+                Some(tile)
+            });
         })
     };
 
@@ -343,9 +358,10 @@ pub fn game_view(props: &Props) -> Html {
     // Closed-game reveal: when nobody could play, the server broadcasts every
     // seat's remaining tiles. Show them face-up, grouped per player, so the
     // pips that decided the blocked winner are visible to everyone.
-    let reveal_panel = match (&game.result, api.state.reveal.as_ref()) {
-        (Some(result), Some(hands)) if result.is_closed() && !hands.is_empty() => {
-            let rows = hands.iter().map(|entry| {
+    let reveal_panel =
+        match (&game.result, api.state.reveal.as_ref()) {
+            (Some(result), Some(hands)) if result.is_closed() && !hands.is_empty() => {
+                let rows = hands.iter().map(|entry| {
                 let seat = entry.seat as usize;
                 let occupant = room.seats.iter().find(|s| s.seat as usize == seat);
                 let pips: u32 = entry.hand.iter().map(|t| t.left as u32 + t.right as u32).sum();
@@ -363,18 +379,42 @@ pub fn game_view(props: &Props) -> Html {
                     </div>
                 }
             });
-            html! {
-                <div class="reveal card">
-                    <div class="reveal-head">{"All hands — the game is closed"}</div>
-                    { for rows }
-                </div>
+                html! {
+                    <div class="reveal card">
+                        <div class="reveal-head">{"All hands — the game is closed"}</div>
+                        { for rows }
+                    </div>
+                }
             }
-        }
-        _ => Html::default(),
-    };
+            _ => Html::default(),
+        };
 
     let actions = if let Some(result) = &game.result {
         let (title, subtitle) = result_text(result, &room, you);
+        // Cumulative partnership score: the running total while the match is
+        // alive, the clinching line once a partnership has crossed the target.
+        let score_line = if game.score.over {
+            let winner = game
+                .score
+                .winner_team
+                .map(usize::from)
+                .unwrap_or_else(|| usize::from(game.score.points[1] > game.score.points[0]));
+            format!(
+                "{} win the match {}–{} — tap \u{201c}Play again\u{201d} to start a fresh one",
+                team_name(winner),
+                game.score.points[0],
+                game.score.points[1]
+            )
+        } else {
+            format!(
+                "{} {} – {} {} · first to {}",
+                team_name(0),
+                game.score.points[0],
+                game.score.points[1],
+                team_name(1),
+                game.score.target
+            )
+        };
         // Rematch readiness lives on the roster: tapping sends `PlayAgain`
         // and the server's echo marks this seat ready. The deal lands when
         // the whole table is ready — no socket cycling, no "seats taken".
@@ -400,6 +440,7 @@ pub fn game_view(props: &Props) -> Html {
             <div class="banner card">
                 <h3>{ title }</h3>
                 if let Some(subtitle) = subtitle { <p>{ subtitle }</p> }
+                <p class={classes!("score-line", game.score.over.then_some("match-over"))}>{ score_line }</p>
                 <p class="hint">{ hint }</p>
                 <div class="banner-buttons">
                     if i_am_ready {
@@ -438,40 +479,56 @@ pub fn game_view(props: &Props) -> Html {
     }
 }
 
-/// Banner copy for each way a game can end.
+/// Banner copy for each way a hand can end, told by partnership: the hand
+/// belongs to a team, and the sentence names the points it banked.
 fn result_text(
     result: &GameResult,
     room: &PublicRoomState,
     you: usize,
 ) -> (String, Option<String>) {
-    let winner = result
-        .winner
+    let our_team = team_of(you);
+    let scorer = result
+        .out
         .and_then(|seat| room.seats.iter().find(|s| s.seat as usize == seat))
         .map(|s| s.name.clone());
-    match (result.winner, result.reason) {
-        (Some(seat), EndReason::HandEmpty) => (
-            if seat == you {
-                "You win! 🎉".to_owned()
+    let banked = || {
+        format!(
+            "+{} point{}",
+            result.points,
+            if result.points == 1 { "" } else { "s" }
+        )
+    };
+    match (result.winner_team.map(usize::from), result.reason) {
+        (Some(team), EndReason::HandEmpty) => (
+            if team == our_team {
+                "Your partnership wins the hand! 🎉".to_owned()
             } else {
-                format!("{} wins! 🎉", winner.as_deref().unwrap_or("A player"))
+                format!(
+                    "{} plays out — {} win the hand",
+                    scorer.as_deref().unwrap_or("A player"),
+                    team_name(team)
+                )
             },
-            Some("played the last tile".to_owned()),
+            Some(format!(
+                "the last tile landed, and the rivals' pips score: {}",
+                banked()
+            )),
         ),
-        (Some(seat), EndReason::Blocked) => (
-            if seat == you {
-                "Game closed — you win on pips! 🎉".to_owned()
+        (Some(team), EndReason::Blocked) => (
+            if team == our_team {
+                "Game closed — your partnership wins on pips! 🎉".to_owned()
             } else {
-                format!("Game closed — {} wins on pips", winner.as_deref().unwrap_or("a player"))
+                format!("Game closed — {} win on pips", team_name(team))
             },
-            Some("nobody could put a tile".to_owned()),
+            Some(format!("nobody could put a tile · {}", banked())),
         ),
         (None, EndReason::Blocked) => (
             "Game closed — draw".to_owned(),
-            Some("nobody could put a tile and pips were tied".to_owned()),
+            Some("the partnerships tied on combined pips, so nobody scores".to_owned()),
         ),
         (_, EndReason::Abandoned) => (
             "Game voided".to_owned(),
-            Some("a player lost connection".to_owned()),
+            Some("a player lost connection · no points awarded".to_owned()),
         ),
         (None, EndReason::HandEmpty) => ("Game over".to_owned(), None),
     }

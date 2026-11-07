@@ -38,6 +38,11 @@ html, body {
     gap: 12px;
 }
 
+/* The game table gets a roomier column than the other screens. */
+.page.game {
+    width: min(680px, 100%);
+}
+
 .center { align-items: center; justify-content: center; text-align: center; }
 
 /* ---------- top bar ---------- */
@@ -394,4 +399,9 @@ input[type="text"] {
 }
 .toast-warn { background: var(--danger); color: white; }
 .toast-info { background: var(--amber); color: #221a00; }
+
+
+/* ---- cumulative partnership scoreboard (game-over banner) ---- */
+.score-line { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.score-line.match-over { color: var(--amber); font-weight: 700; }
 

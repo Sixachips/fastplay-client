@@ -50,6 +50,17 @@ Run from `client/` unless noted:
 - Run `cargo test` and `cargo check --target wasm32-unknown-unknown` before considering a change done.
 - For view and wire-level behaviour, extend `scripts/e2e-browser.mjs` or `scripts/e2e-smoke.mjs` when the change affects the user flow or protocol.
 
+## Clean code
+
+- Write small functions with one clear purpose; split out a helper when a function needs a comment to explain what a block does.
+- Use descriptive names for types, functions, and variables. Prefer domain terms from the README and protocol (room, seat, hand, chain, opening tile) over abbreviations.
+- Keep changes minimal and focused. Don't refactor unrelated code in the same change.
+- Remove dead code, unused imports, and commented-out code instead of leaving it behind.
+- Handle errors explicitly. Avoid `unwrap()`/`expect()` outside tests unless the invariant is documented; in WASM code, prefer feature detection over panics (see the insecure-context fallbacks below).
+- Keep state transitions in the reducer (`src/state.rs`) pure and testable; keep DOM and WebSocket side effects in `view/` and `session.rs`.
+- Follow the existing style of the surrounding code, and keep comments for non-obvious behaviour or invariants only.
+- Run `cargo fmt` and `cargo clippy` and fix warnings before finishing a change.
+
 ## Architecture & Non-Obvious Invariants
 
 - **Project layout**: `src/main.rs` (entry, `<App />`), `src/protocol.rs` (wire types), `src/session.rs` (WebSocket lifecycle, reconnect), `src/state.rs` (`AppState` + reducer), `src/roomcode.rs` (room codes, share links, `guess_ws_url()`), `src/legality.rs` (playable tiles), `src/view/{home,room,game,domino,share,mod}.rs`. Static assets: `index.html`, `styles.css` (mobile-first, dark-green table theme), `manifest.webmanifest`, `sw.js`, `icons/`, copied via `<link data-trunk rel="copy-...">` in `index.html`. `wireframes/` holds design references.

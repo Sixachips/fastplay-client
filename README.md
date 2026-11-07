@@ -25,6 +25,12 @@ Built with **Yew** (Rust) and **Trunk**, it runs as a single‑page app and can 
 - **Deployment**: `trunk build --release` → static files served by a reverse proxy (Caddy/NGINX) that also proxies `/ws` to the Rust server.
 
 ---
+## Domino rules
+
+- App determines the winner using the standard / latin rules.
+- App scoring system is based from the Standard cumulative scoring (100 points).
+
+To view the rules read [rules](https://github.com/Sixachips/fastplay-server/blob/main/Rules.md) file in the server.
 
 ## Prerequisites
 
@@ -66,19 +72,8 @@ Built with **Yew** (Rust) and **Trunk**, it runs as a single‑page app and can 
 
 ## Running the server
 
-The dominoes server listens on **`ws://0.0.0.0:8080/ws`** by default (see the server’s own configuration). Make sure the server is running before you start the client.
+Refer to the server [git repository](https://github.com/Sixachips/fastplay-server).
 
-Typical start command (from the repository root, `server/` directory):
-
-```bash
-cargo run --bin fastplay-server   # or whatever the server binary is named
-```
-
-If you are using the provided server binary, check its `Cargo.toml` for the exact name.
-
-> **Note**: The server expects the client to connect to that exact WS endpoint. The client’s auto‑detect logic (see *WebSocket URL* below) will produce that URL in the normal dev setup.
-
----
 
 ## Running the client
 

@@ -1,6 +1,5 @@
 /// fastPlay client root: mounts the app, owns the WebSocket session, and
 /// routes between the home / room / game screens.
-
 mod legality;
 mod protocol;
 mod roomcode;
@@ -12,7 +11,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::JsValue;
-use web_sys;
 
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
@@ -64,7 +62,9 @@ impl Api {
     }
 
     /// Open (or re-open) a connection and claim a seat in `room` as `name`.
-    pub fn join(&self, room: String, name: String) {
+    /// `team` is the partnership preference from the home picker (`0`
+    /// North–South, `1` West–East, or `None` for "no preference").
+    pub fn join(&self, room: String, name: String, team: Option<u8>) {
         let room = room.trim().to_owned();
         let name = name.trim().to_owned();
         // Close any previous socket *before* the fresh one starts joining:
@@ -74,20 +74,25 @@ impl Api {
         if let Some(previous) = self.session.borrow_mut().as_mut() {
             previous.leave();
         }
-        self.state.dispatch(Msg::JoinRoom { room: room.clone(), name: name.clone() });
-        state::persist_inputs(&name, &self.state.ws_url);
+        self.state.dispatch(Msg::JoinRoom {
+            room: room.clone(),
+            name: name.clone(),
+            team,
+        });
+        state::persist_inputs(&name, &self.state.ws_url, team);
         sync_room_url(Some(&room));
 
         let on_event = {
             let state = self.state.clone();
             Callback::from(move |event: SocketEvent| state.dispatch(Msg::Socket(event)))
         };
-        let session = Session::start(self.state.ws_url.clone(), room, name, on_event);
+        let session = Session::start(self.state.ws_url.clone(), room, name, team, on_event);
         // Assigning drops the previous session: its connection loop stops, and the socket closes.
         *self.session.borrow_mut() = Some(session);
     }
 
-    /// New game: mint a room code, park it in the form, and sit down.
+    /// New game: mint a room code, park it in the form, and sit down. The
+    /// partnership the picker chose becomes the creator's request.
     pub fn new_game(&self) {
         if self.state.name.trim().is_empty() {
             self.state.dispatch(Msg::ShowToast {
@@ -98,7 +103,7 @@ impl Api {
         }
         let code = roomcode::generate();
         self.state.dispatch(Msg::RoomChanged(code.clone()));
-        self.join(code, self.state.name.clone());
+        self.join(code, self.state.name.clone(), self.state.team);
     }
 
     /// Send a game command over the live socket. With no session at all (never
@@ -141,8 +146,12 @@ impl Api {
 /// copying the page URL (or sharing it from the OS) carries the `?room=CODE`
 /// query string that makes the link jump straight to the right table.
 fn sync_room_url(code: Option<&str>) {
-    let Some(window) = web_sys::window() else { return };
-    let Ok(history) = window.history() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(history) = window.history() else {
+        return;
+    };
     let location = window.location();
     let origin = location.origin().unwrap_or_default();
     let path = location.pathname().unwrap_or_default();

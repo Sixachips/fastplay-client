@@ -46,11 +46,15 @@ pub enum ToastKind {
     Info,
 }
 
-/// The room + name the current (or intended) connection is seated in.
+/// The room + name + partnership the current (or intended) connection is
+/// seated in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinTarget {
     pub room: String,
     pub name: String,
+    /// The partnership requested on join (`0`, `1`, or `None` for "no
+    /// preference"); the actual team always comes from `RoomState.seats`.
+    pub team: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +63,9 @@ pub struct AppState {
     pub name: String,
     pub room_input: String,
     pub ws_url: String,
+    /// Partnership preference picked on the home screen (`0` North–South,
+    /// `1` West–East, `None` for "no preference").
+    pub team: Option<u8>,
 
     // ---- connection ----
     pub target: Option<JoinTarget>,
@@ -84,10 +91,20 @@ pub enum Msg {
     NameChanged(String),
     RoomChanged(String),
     WsUrlChanged(String),
-    JoinRoom { room: String, name: String },
+    /// The home-screen partnership picker: `Some(0)` North–South, `Some(1)`
+    /// West–East, `None` for "no preference".
+    TeamChanged(Option<u8>),
+    JoinRoom {
+        room: String,
+        name: String,
+        team: Option<u8>,
+    },
     LeaveRoom,
     Socket(SocketEvent),
-    ShowToast { kind: ToastKind, text: String },
+    ShowToast {
+        kind: ToastKind,
+        text: String,
+    },
     DismissToast,
 }
 
@@ -114,7 +131,11 @@ impl AppState {
 
     fn set_toast(&mut self, kind: ToastKind, text: String) {
         self.toast_nonce += 1;
-        self.toast = Some(Toast { nonce: self.toast_nonce, kind, text });
+        self.toast = Some(Toast {
+            nonce: self.toast_nonce,
+            kind,
+            text,
+        });
     }
 
     /// Client-side validation mirroring the server's wire constraints, so
@@ -131,6 +152,7 @@ impl AppState {
         Some(ClientToServer::JoinRoom {
             room: room.to_owned(),
             name: name.to_owned(),
+            team: self.team,
         })
     }
 
@@ -156,11 +178,12 @@ fn reduce(state: &mut AppState, msg: Msg) {
         Msg::NameChanged(name) => state.name = name,
         Msg::RoomChanged(room) => state.room_input = room,
         Msg::WsUrlChanged(url) => state.ws_url = url,
+        Msg::TeamChanged(team) => state.team = team,
 
-        Msg::JoinRoom { room, name } => {
+        Msg::JoinRoom { room, name, team } => {
             // A fresh socket claims a fresh seat: drop all game data; the
             // server re-sends everything it thinks we should see.
-            state.target = Some(JoinTarget { room, name });
+            state.target = Some(JoinTarget { room, name, team });
             state.room = None;
             state.hand = Vec::new();
             state.game = None;
@@ -190,7 +213,11 @@ fn reduce(state: &mut AppState, msg: Msg) {
                     // Hands are private; ignore one addressed to a different
                     // seat (possible if our seat index shifted after a
                     // reconnect).
-                    if state.room.as_ref().is_some_and(|room| room.you == seat as usize) {
+                    if state
+                        .room
+                        .as_ref()
+                        .is_some_and(|room| room.you == seat as usize)
+                    {
                         state.hand = hand;
                     }
                 }
@@ -215,9 +242,7 @@ fn reduce(state: &mut AppState, msg: Msg) {
                         "Game closed — nobody could play. All hands are shown.".to_owned(),
                     );
                 }
-                ServerToClient::MoveRejected { reason } => {
-                    state.set_toast(ToastKind::Warn, reason)
-                }
+                ServerToClient::MoveRejected { reason } => state.set_toast(ToastKind::Warn, reason),
                 ServerToClient::OpponentDisconnected { player, seat } => {
                     state.set_toast(
                         ToastKind::Warn,
@@ -302,6 +327,7 @@ fn tile_added(prev: &[PublicTile], next: &[PublicTile]) -> Option<PublicTile> {
 
 const NAME_KEY: &str = "fastplay.name";
 const WS_URL_KEY: &str = "fastplay.ws_url";
+const TEAM_KEY: &str = "fastplay.team";
 
 /// Build the initial state from remembered inputs plus the share link, so
 /// `https://host/?room=CODE` pre-fills the table and returning players only
@@ -312,6 +338,9 @@ pub fn initial() -> AppState {
         room_input: crate::roomcode::room_from_url().unwrap_or_default(),
         ws_url: LocalStorage::get::<String>(WS_URL_KEY)
             .unwrap_or_else(|_| crate::roomcode::guess_ws_url()),
+        team: LocalStorage::get::<u8>(TEAM_KEY)
+            .ok()
+            .filter(|team| *team < 2),
         target: None,
         socket: SocketState::Offline,
         room: None,
@@ -323,10 +352,19 @@ pub fn initial() -> AppState {
     }
 }
 
-/// Remember the form inputs once a join actually happens.
-pub fn persist_inputs(name: &str, ws_url: &str) {
+/// Remember the form inputs once a join actually happens. `team` is stored
+/// only when a partnership was picked; "no preference" clears the key.
+pub fn persist_inputs(name: &str, ws_url: &str, team: Option<u8>) {
     let _ = LocalStorage::set(NAME_KEY, name);
     let _ = LocalStorage::set(WS_URL_KEY, ws_url);
+    match team {
+        Some(team) => {
+            let _ = LocalStorage::set(TEAM_KEY, team);
+        }
+        None => {
+            LocalStorage::delete(TEAM_KEY);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -344,6 +382,7 @@ mod tests {
             name: "Ada".into(),
             room_input: "a".into(),
             ws_url: "ws://h/ws".into(),
+            team: None,
             target: None,
             socket: SocketState::Online,
             room: Some(PublicRoomState {
@@ -371,26 +410,91 @@ mod tests {
     }
 
     #[test]
+    fn the_pick_rides_along_on_join_and_new_game() {
+        let mut state = seated();
+        reduce(&mut state, Msg::TeamChanged(Some(1)));
+        let request = state.join_request().expect("a valid join request");
+        match request {
+            ClientToServer::JoinRoom { room, name, team } => {
+                assert_eq!(
+                    (room.as_str(), name.as_str(), team),
+                    ("a", "Ada", Some(1u8)),
+                    "the join request must carry the picked partnership"
+                );
+            }
+            _ => panic!("expected a JoinRoom message"),
+        }
+
+        // Joining (and "New game", which joins through the same request) keeps
+        // the preference on the target so a reconnect re-claims the same side.
+        reduce(
+            &mut state,
+            Msg::JoinRoom {
+                room: "a".into(),
+                name: "Ada".into(),
+                team: Some(1),
+            },
+        );
+        assert_eq!(
+            state.target,
+            Some(JoinTarget {
+                room: "a".into(),
+                name: "Ada".into(),
+                team: Some(1)
+            }),
+            "the target joins with the picked team after a reconnect"
+        );
+
+        // "No preference" stays off the wire: serde drops the field.
+        let mut state = seated();
+        reduce(&mut state, Msg::TeamChanged(None));
+        match state.join_request().expect("a valid join request") {
+            ClientToServer::JoinRoom { team, .. } => assert_eq!(team, None),
+            _ => panic!("expected a JoinRoom message"),
+        }
+    }
+
+    #[test]
     fn a_closed_game_reveals_every_hand_and_notifies() {
         let mut state = seated();
         let mut closing = view(&[], 0, [1, 1, 1, 1]);
         closing.result = Some(closed_result());
         reduce(
             &mut state,
-            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing })),
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate {
+                state: closing,
+            })),
         );
-        assert!(state.reveal.is_none(), "the reveal only lands with its own message");
+        assert!(
+            state.reveal.is_none(),
+            "the reveal only lands with its own message"
+        );
 
         let hands = vec![
-            ClosedHand { seat: 0, hand: vec![tile(0, 0)] },
-            ClosedHand { seat: 1, hand: vec![tile(1, 1)] },
+            ClosedHand {
+                seat: 0,
+                hand: vec![tile(0, 0)],
+            },
+            ClosedHand {
+                seat: 1,
+                hand: vec![tile(1, 1)],
+            },
         ];
         reduce(
             &mut state,
-            Msg::Socket(SocketEvent::Msg(ServerToClient::GameClosed { hands: hands.clone() })),
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameClosed {
+                hands: hands.clone(),
+            })),
         );
-        assert_eq!(state.reveal, Some(hands), "every hand is kept for the board");
-        assert!(matches!(state.toast.as_ref().map(|t| t.kind), Some(ToastKind::Info)));
+        assert_eq!(
+            state.reveal,
+            Some(hands),
+            "every hand is kept for the board"
+        );
+        assert!(matches!(
+            state.toast.as_ref().map(|t| t.kind),
+            Some(ToastKind::Info)
+        ));
     }
 
     #[test]
@@ -400,12 +504,17 @@ mod tests {
         closing.result = Some(closed_result());
         reduce(
             &mut state,
-            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing.clone() })),
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate {
+                state: closing.clone(),
+            })),
         );
         reduce(
             &mut state,
             Msg::Socket(SocketEvent::Msg(ServerToClient::GameClosed {
-                hands: vec![ClosedHand { seat: 0, hand: vec![tile(0, 0)] }],
+                hands: vec![ClosedHand {
+                    seat: 0,
+                    hand: vec![tile(0, 0)],
+                }],
             })),
         );
         assert!(state.reveal.is_some());
@@ -414,9 +523,14 @@ mod tests {
         // hands stay revealed.
         reduce(
             &mut state,
-            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate { state: closing })),
+            Msg::Socket(SocketEvent::Msg(ServerToClient::GameStateUpdate {
+                state: closing,
+            })),
         );
-        assert!(state.reveal.is_some(), "a closed snapshot does not retire its own reveal");
+        assert!(
+            state.reveal.is_some(),
+            "a closed snapshot does not retire its own reveal"
+        );
 
         // The next deal is live, so the reveal goes away.
         reduce(
@@ -425,7 +539,10 @@ mod tests {
                 state: view(&[], 1, [7, 7, 7, 7]),
             })),
         );
-        assert!(state.reveal.is_none(), "a fresh live game hides hands again");
+        assert!(
+            state.reveal.is_none(),
+            "a fresh live game hides hands again"
+        );
     }
 
     /// A snapshot built the way the server builds it: the chain carries the
@@ -484,7 +601,11 @@ mod tests {
         let next = view(&[tile(3, 4), tile(4, 6), tile(6, 6)], 0, [7, 7, 1, 7]);
         let mut hand = vec![tile(1, 6), tile(4, 6), tile(6, 6)];
         sync_hand(&mut hand, Some(&prev), &next, Some(2));
-        assert_eq!(hand, vec![tile(1, 6)], "board-visible tiles are the ones dropped");
+        assert_eq!(
+            hand,
+            vec![tile(1, 6)],
+            "board-visible tiles are the ones dropped"
+        );
     }
 
     #[test]
@@ -501,7 +622,11 @@ mod tests {
         let (a, b, c) = (tile(1, 2), tile(2, 3), tile(3, 4));
         assert_eq!(tile_added(&[a, b], &[a, b, c]), Some(c), "grew right");
         assert_eq!(tile_added(&[a, b], &[c, a, b]), Some(c), "grew left");
-        assert_eq!(tile_added(&[a, b], &[a, c, b]), None, "never happens mid-chain");
+        assert_eq!(
+            tile_added(&[a, b], &[a, c, b]),
+            None,
+            "never happens mid-chain"
+        );
         assert_eq!(tile_added(&[a], &[a, b, c]), None, "two tiles at once");
         assert_eq!(tile_added(&[a, b], &[a, b]), None, "a pass changes nothing");
     }

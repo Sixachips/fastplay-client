@@ -3,6 +3,8 @@
 // Drives the REAL compiled WASM app in headless chromium over the DevTools
 // protocol while three bot seats play the rest of the table on the raw
 // WebSocket. It asserts the things a wire-level test cannot see:
+//   • the home screen's partnership picker seats the player on the requested
+//     team, in both the new-game flow and the join flow
 //   • tapping a hand tile only PICKS it up (nothing is played yet)
 //   • a picked tile raises the placement bar with one button per fitting end
 //   • confirming grows the board by 1 and shrinks the hand by 1
@@ -58,14 +60,23 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(PORT, r));
 
-// ---------- three bot seats on the wire protocol ----------
-function bot(name) {
+// ---------- three bot seats on the raw wire protocol ----------
+function bot(name, team = null) {
   const ws = new WebSocket(WS);
-  const b = { name, hand: [], you: null, game: null, closed: null, rejects: [] };
-  ws.onopen = () => ws.send(JSON.stringify({ type: 'JoinRoom', room: ROOM, name }));
+  // `team` is a partnership preference (0/1) that this bot requests on join;
+  // null joins with no preference.
+  const join = () => ws.send(JSON.stringify({
+    type: 'JoinRoom', room: ROOM, name, ...(team !== null ? { team } : {}),
+  }));
+  const b = { name, hand: [], you: null, team: null, game: null, closed: null, rejects: [], join };
+  ws.onopen = join;
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
-    if (m.type === 'RoomState') b.you = m.room.you;
+    if (m.type === 'RoomState') {
+      b.you = m.room.you;
+      b.roster = m.room.seats;
+      b.team = m.room.seats.find((s) => s.seat === b.you)?.team ?? null;
+    }
     if (m.type === 'HandDealt') b.hand = m.hand;
     if (m.type === 'GameStateUpdate') { b.game = m.state; playFor(b, ws); }
     if (m.type === 'GameClosed') b.closed = m.hands;
@@ -102,7 +113,11 @@ function place(b, ws, tile, side) {
   if (i >= 0) b.hand.splice(i, 1);
 }
 
-const bots = ['Ada', 'Bob', 'Cleo'].map(bot);
+const PLAYERS = ['Ada', 'Bob', 'Cleo'];
+// Bot seats are connected lazily: they join only once the browser seat has
+// claimed its own, so the table cannot fill (and deal) before the picker's
+// effect is observable on the room screen.
+let bots = [];
 
 // ---------- chromium over CDP ----------
 // A fresh port per run: attaching to a leftover headless instance from an
@@ -175,9 +190,28 @@ const waitFor = async (expression, ms, what) => {
 
 await call('Runtime.enable');
 await call('Page.enable');
-await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/?room=${ROOM}` });
 
-// Sit down as the fourth seat, which is what makes the table deal.
+// Type into the home form like a finger would. The DOM may catch up to the
+// click a frame later, so fall back to polling before judging a tap.
+const selectByClick = async (label) => {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const cls = await evaluate(`(() => {
+      const b = [...document.querySelectorAll('.team-picker .btn')]
+        .find((x) => x.textContent.trim() === ${JSON.stringify(label)});
+      if (!b) return null;
+      b.click();
+      return b.className;
+    })()`);
+    if (cls?.includes('picked')) return cls;
+    await sleep(120);
+  }
+  throw new Error('tapping a team did not mark it picked: ' + label);
+};
+
+// Phase 1 — new-game flow: create the room from the home screen and check the
+// picker's choice reached the seat claim.
+await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 await waitFor(`!!document.querySelector('.home input')`, 25000, 'the home form');
 await evaluate(`(() => {
   const set = (el, v) => {
@@ -187,11 +221,94 @@ await evaluate(`(() => {
   set(document.querySelectorAll('.home input')[0], 'Rita');
   return true;
 })()`);
+const northSouth = await selectByClick('North–South');
+if (!northSouth.includes('picked')) throw new Error('tapping a team did not mark it picked');
 await evaluate(`(() => {
-  [...document.querySelectorAll('.home .btn')].find((b) => b.textContent.includes('Join table')).click();
+  [...document.querySelectorAll('.home .form-buttons .btn')]
+    .find((b) => b.textContent.includes('New game')).click();
   return true;
 })()`);
+await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the waiting room');
+{
+  const you = await evaluate(
+    `(() => {
+      const seat = document.querySelector('.seat.you');
+      return { team: seat.querySelector('.seat-team')?.textContent, cls: seat.className, num: seat.querySelector('.seat-num')?.textContent };
+    })()`);
+  if (!you.team || !you.team.includes('North–South')) throw new Error('the new-game join ignored the North–South preference: ' + JSON.stringify(you));
+  if (!you.cls.includes('team-north-south')) throw new Error('the room seat missed its team class: ' + you.cls);
+  console.log('OK: new game — the creator sat on', you.team, '(seat', you.num + ')');
+}
+await evaluate(`(() => { document.querySelector('.leave')?.click(); return true; })()`);
+await sleep(300);
+
+// Phase 2 — join flow: arrive via the shared link, pick West–East, join first,
+// then fill the table with bot seats (a full team never refuses a join; the
+// room screen must show the team that actually seated us).
+await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/?room=${ROOM}` });
+await waitFor(`!!document.querySelector('.home input')`, 25000, 'the home form');
+await evaluate(`(() => {
+  const set = (el, v) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  set(document.querySelectorAll('.home input')[0], 'Rita');
+  return true;
+})()`);
+{
+  const westEast = await selectByClick('West–East');
+  if (!westEast.includes('picked')) throw new Error('tapping a team did not mark it picked');
+}
+await evaluate(`(() => {
+  [...document.querySelectorAll('.home .form-buttons .btn')]
+    .find((b) => b.textContent.includes('Join table')).click();
+  return true;
+})()`);
+await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the waiting room');
+{
+  const you = await evaluate(
+    `(() => {
+      const seat = document.querySelector('.seat.you');
+      return { team: seat.querySelector('.seat-team')?.textContent, cls: seat.className, num: seat.querySelector('.seat-num')?.textContent };
+    })()`);
+  if (!you.team || !you.team.includes('West–East')) {
+    throw new Error('the preference join ignored the West–East preference: ' + JSON.stringify(you));
+  }
+  if (!you.cls.includes('team-east-west')) throw new Error('the room seat missed its team class: ' + you.cls);
+  console.log('OK: join flow — the picker sat me on West–East (seat', you.num + ')');
+}
+
+// Fill the table; the fourth join deals hands automatically.
+bots = PLAYERS.map((name) => bot(name));
 await waitFor(`!!document.querySelector('.hand .hand-tile')`, 25000, 'a dealt hand in the browser');
+
+// The seat the picker produced is on the wire too: every bot roster lists
+// Rita at an odd (West–East) seat with team 1, and every seat's team is its
+// seat parity.
+{
+  const deadline = Date.now() + 8000;
+  while (true) {
+    const rosters = bots.filter((b) => Array.isArray(b.roster) && b.roster.length === 4);
+    if (rosters.length === bots.length) {
+      for (const b of rosters) {
+        const rita = b.roster.find((s) => s.name === 'Rita');
+        if (!rita) throw new Error(b.name + "'s roster lost Rita");
+        if (rita.team !== 1 || rita.seat % 2 !== 1) {
+          throw new Error('Rita was seated at seat ' + rita.seat + ' with team ' + rita.team +
+            ', not the requested West–East partnership');
+        }
+        for (const s of b.roster) {
+          if (s.team !== s.seat % 2) throw new Error('seat ' + s.seat + ' reports team ' + s.team);
+        }
+      }
+      console.log('OK: the wire confirms Rita joined West–East (seat ' +
+        rosters[0].roster.find((s) => s.name === 'Rita').seat + ')');
+      break;
+    }
+    if (Date.now() > deadline) throw new Error('timeout waiting for full rosters at every bot');
+    await sleep(120);
+  }
+}
 
 // Everything the test can observe about the game screen, in one round-trip.
 const readUi = () => evaluate(`(() => ({

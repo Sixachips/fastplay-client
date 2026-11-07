@@ -26,7 +26,6 @@ pub const fn team_name(team: usize) -> &'static str {
     }
 }
 
-
 /// Which end of the linear board a tile is played on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -85,8 +84,20 @@ impl fmt::Display for PublicTile {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientToServer {
-    JoinRoom { room: String, name: String },
-    PlayTile { tile: PublicTile, side: Side },
+    JoinRoom {
+        room: String,
+        name: String,
+        /// Best-effort partnership preference (`0` or `1`). Absent or `null`
+        /// means "no preference" — the seat lands wherever one is free, and
+        /// `RoomState.seats[*].team` reports the actual side. A full team
+        /// never refuses a join.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        team: Option<u8>,
+    },
+    PlayTile {
+        tile: PublicTile,
+        side: Side,
+    },
     PassTurn,
     /// "Play again": this seated player is ready for the next game. When a
     /// full table of four ready seats shares a finished (or absent) game,
@@ -99,15 +110,29 @@ pub enum ClientToServer {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerToClient {
-    RoomState { room: PublicRoomState },
-    HandDealt { seat: u8, hand: Vec<PublicTile> },
-    GameStateUpdate { state: PublicGameState },
+    RoomState {
+        room: PublicRoomState,
+    },
+    HandDealt {
+        seat: u8,
+        hand: Vec<PublicTile>,
+    },
+    GameStateUpdate {
+        state: PublicGameState,
+    },
     /// The game closed: every seat passed in a row, so nobody can put a tile.
     /// Broadcast to all seats right after the terminating `GameStateUpdate`,
     /// with every player's remaining tiles revealed to everyone.
-    GameClosed { hands: Vec<ClosedHand> },
-    MoveRejected { reason: String },
-    OpponentDisconnected { player: String, seat: u8 },
+    GameClosed {
+        hands: Vec<ClosedHand>,
+    },
+    MoveRejected {
+        reason: String,
+    },
+    OpponentDisconnected {
+        player: String,
+        seat: u8,
+    },
 }
 
 /// One seat's remaining tiles, made public when the game closes.
@@ -126,12 +151,28 @@ pub enum RoomPhase {
     Finished,
 }
 
+/// A player's position around the square table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TableSide {
+    North,
+    East,
+    South,
+    West,
+}
+
 /// One occupied seat. Vacant seats are simply absent from `seats`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicSeat {
     pub seat: u8,
     pub player_id: u64,
     pub name: String,
+    /// Where this seat sits around the table (pinned to the seat, not to the
+    /// occupant).
+    pub table_side: TableSide,
+    /// Partnership this seat belongs to: `seat % 2` (team 0 = seats 0 & 2,
+    /// team 1 = seats 1 & 3).
+    pub team: u8,
     /// Whether this player has tapped "Play again" since the last deal.
     pub ready: bool,
 }
@@ -243,12 +284,99 @@ impl PublicGameState {
 mod tests {
     use super::*;
 
+    /// The join preference mirrors the server's `JoinRoom` examples: an
+    /// explicit `0`/`1` requests a partnership, while an absent or `null`
+    /// `team` means "no preference".
+    #[test]
+    fn join_room_parses_the_optional_team_preference() {
+        let join: ClientToServer = serde_json::from_str(
+            r#"{"type": "JoinRoom", "room": "table-42", "name": "Ada", "team": 1}"#,
+        )
+        .expect("valid JoinRoom with team");
+        if let ClientToServer::JoinRoom { room, name, team } = join {
+            assert_eq!(
+                (room.as_str(), name.as_str(), team),
+                ("table-42", "Ada", Some(1))
+            );
+        } else {
+            panic!("expected a JoinRoom message");
+        }
+
+        let join: ClientToServer =
+            serde_json::from_str(r#"{"type": "JoinRoom", "room": "table-42", "name": "Ada"}"#)
+                .expect("valid JoinRoom without team");
+        if let ClientToServer::JoinRoom { team, .. } = join {
+            assert_eq!(team, None, "absent team means no preference");
+        }
+
+        let join: ClientToServer = serde_json::from_str(
+            r#"{"type": "JoinRoom", "room": "table-42", "name": "Ada", "team": null}"#,
+        )
+        .expect("valid JoinRoom with null team");
+        if let ClientToServer::JoinRoom { team, .. } = join {
+            assert_eq!(team, None, "null team means no preference");
+        }
+    }
+
+    /// Outbound: a join without a preference leaves `team` off the wire
+    /// entirely (the server's `skip_serializing_if` example shape), while a
+    /// picked partnership travels as `0` or `1`.
+    #[test]
+    fn join_room_serializes_the_team_only_when_picked() {
+        let join = ClientToServer::JoinRoom {
+            room: "table-42".into(),
+            name: "Ada".into(),
+            team: None,
+        };
+        let json = serde_json::to_string(&join).expect("serializable");
+        assert_eq!(
+            json,
+            r#"{"type":"JoinRoom","room":"table-42","name":"Ada"}"#
+        );
+
+        for (team, tag) in [(Some(0), "0"), (Some(1), "1")] {
+            let join = ClientToServer::JoinRoom {
+                room: "table-42".into(),
+                name: "Ada".into(),
+                team,
+            };
+            let json = serde_json::to_string(&join).expect("serializable");
+            assert_eq!(
+                json,
+                format!(r#"{{"type":"JoinRoom","room":"table-42","name":"Ada","team":{tag}}}"#)
+            );
+        }
+    }
+
+    /// A seat reports its place at the table *and* its partnership, so the
+    /// waiting room shows each team straight from the wire.
+    #[test]
+    fn a_seat_carries_its_table_side_and_partnership() {
+        let seat: PublicSeat = serde_json::from_str(
+            r#"{"seat":3,"player_id":7,"name":"Bob","table_side":"east","team":1,"ready":true}"#,
+        )
+        .expect("a full seat row");
+        assert_eq!(seat.table_side, TableSide::East);
+        assert_eq!(seat.team, 1);
+        assert!(seat.ready);
+
+        let json = serde_json::to_string(&seat).expect("serializable");
+        assert_eq!(
+            json,
+            r#"{"seat":3,"player_id":7,"name":"Bob","table_side":"east","team":1,"ready":true}"#
+        );
+    }
+
     /// The board chain draws doubles across the row, so the check must follow
     /// the pips and not the orientation the tile was played in.
     #[test]
     fn doubles_are_recognised_whichever_way_they_lie() {
         for pip in 0..=6 {
-            assert!(PublicTile { left: pip, right: pip }.is_double());
+            assert!(PublicTile {
+                left: pip,
+                right: pip
+            }
+            .is_double());
         }
         assert!(!PublicTile { left: 5, right: 6 }.is_double());
         assert!(!PublicTile { left: 6, right: 5 }.is_double());

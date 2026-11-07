@@ -5,6 +5,8 @@ Browser/PWA client (Yew 0.21 CSR + Trunk, compiled to `wasm32-unknown-unknown`) 
 ## Domain rules
 
 - The app determines the winner using the standard / latin domino rules. Full rules: https://github.com/Sixachips/fastplay-server/blob/main/Rules.md. Check it before changing scoring or win logic.
+- Only standard/Latin rules are supported. Jamaican rules and 6-Love scoring are out of scope.
+- Players pick a partnership on the home screen (`JoinRoom.team`: `0` North–South for seats 0 & 2, `1` West–East for seats 1 & 3, absent for "no preference"). A full team never refuses a join; the actual side always comes from `RoomState.seats[*].team`.
 - Scoring is standard cumulative scoring: a partnership reaching the target (100 points) wins the match (`protocol.rs`, `score.target`).
 
 ## Prerequisites

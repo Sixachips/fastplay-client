@@ -46,11 +46,25 @@ const fits = (tile, end) => tile.left === end || tile.right === end;
 const room = 'smoke' + Math.random().toString(36).slice(2, 7);
 const players = ['Ada', 'Bob', 'Cleo', 'Dan'].map(connect);
 await Promise.all(players.map((p) => p.open));
-for (const p of players) p.send({ type: 'JoinRoom', room, name: p.name });
+// Interleaved partnership preferences: best-effort on the wire (a full team
+// falls back to any free seat) but with an empty room every request is honored.
+const prefs = [0, 1, 0, 1];
+for (const [i, p] of players.entries()) p.send({ type: 'JoinRoom', room, name: p.name, team: prefs[i] });
 
 // Let the whole deal settle before commanding anything.
 await waitAll(players, (p) => p.hand.length === 7 && p.game !== null, 8000, 'initial deal');
 console.log('OK: four private hands of 7 tiles dealt');
+
+// Every roster reports each seat's partnership: the requested team, which on
+// the seat grid is exactly seat parity (0 = North–South, 1 = West–East).
+for (const [i, p] of players.entries()) {
+  const me = p.roomState.seats.find((s) => s.seat === p.roomState.you);
+  if (!me || me.team !== prefs[i] || me.team !== me.seat % 2) {
+    throw new Error(p.name + ': seat ' + p.roomState.you + ' reports team ' +
+      me?.team + ', requested ' + prefs[i]);
+  }
+}
+console.log('OK: every JoinRoom.team preference was honored (teams = [N,S,W,E...])');
 
 // First hand of the session (rules.md): the 6|6 holder opens, and the 6|6 is
 // the only tile that may start the layout.

@@ -4,7 +4,7 @@
 
 use yew::prelude::*;
 
-use crate::protocol::SEAT_COUNT;
+use crate::protocol::{team_name, team_of, SEAT_COUNT};
 use crate::roomcode;
 use crate::state::{Msg, ToastKind};
 use crate::view::share;
@@ -77,12 +77,21 @@ pub fn room_view(props: &Props) -> Html {
             3 => "east",
             _ => "north",
         };
-        let team = match seat {
-            0 | 2 => "team-north-south",
-            _ => "team-east-west",
+        // A full team never refuses a join (the seeker falls back to any free
+        // seat), so the partnership is read from the wire, not from seat
+        // parity. Vacant seats inherit their seat's side — the only pair of
+        // partners that can fill them.
+        let (team, team_label) = match occupant {
+            Some(occupant) => (occupant.team, team_name(occupant.team as usize)),
+            None => (team_of(seat) as u8, team_name(team_of(seat))),
+        };
+        let team_class = if team == 0 {
+            "team-north-south"
+        } else {
+            "team-east-west"
         };
         html! {
-            <div class={classes!("seat", side, team,
+            <div class={classes!("seat", side, team_class,
                 occupant.is_some().then_some("taken"),
                 is_you.then_some("you"))}>
                 <span class="seat-num">{seat + 1}</span>
@@ -92,9 +101,10 @@ pub fn room_view(props: &Props) -> Html {
                             <>
                                 <span class="seat-name">{ &occupant.name }</span>
                                 if is_you { <span class="seat-you">{"you"}</span> }
+                                <span class="seat-team">{ team_label }</span>
                             </>
                         },
-                        None => html! { <span class="seat-empty">{"empty seat"}</span> },
+                        None => html! { <span class="seat-empty">{ team_label }</span> },
                     } }
                 </div>
             </div>

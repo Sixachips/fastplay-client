@@ -62,14 +62,17 @@ pub struct Session {
 
 impl Session {
     /// Starts the loop and returns immediately; the socket runs in a task.
+    /// `team` is the partnership preference sent on every `JoinRoom` this
+    /// session makes (`0`, `1`, or `None` for "no preference").
     pub fn start(
         url: String,
         room: String,
         name: String,
+        team: Option<u8>,
         on_event: Callback<SocketEvent>,
     ) -> Session {
         let (tx, rx) = mpsc::unbounded();
-        spawn_local(run(url, room, name, rx, on_event));
+        spawn_local(run(url, room, name, team, rx, on_event));
         Session { tx }
     }
 
@@ -91,6 +94,7 @@ async fn run(
     url: String,
     room: String,
     name: String,
+    team: Option<u8>,
     commands: mpsc::UnboundedReceiver<Command>,
     on_event: Callback<SocketEvent>,
 ) {
@@ -110,10 +114,12 @@ async fn run(
                 let (mut sink, stream) = socket.split();
                 let mut stream = stream.fuse();
 
-                // Every fresh connection starts by claiming its room again.
+                // Every fresh connection starts by claiming its room again —
+                // with the partnership preference it joined with.
                 let join = ClientToServer::JoinRoom {
                     room: room.clone(),
                     name: name.clone(),
+                    team,
                 };
                 let text = serde_json::to_string(&join).expect("join is serializable");
                 if sink.send(Message::Text(text)).await.is_err() {

@@ -1,0 +1,105 @@
+name: E2E
+
+# Runs the wire-level and browser end-to-end suites against a live
+# fastPlay server. The server lives in a separate repository, so it is
+# checked out and started here on port 8080.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  FASTPLAY_WS: ws://127.0.0.1:8080/ws
+  FASTPLAY_CHROME: google-chrome
+
+jobs:
+  e2e:
+    name: Smoke and browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout fastPlay server
+        uses: actions/checkout@v4
+        with:
+          repository: Sixachips/fastplay-server
+          # Needed only if the server repository is private.
+          token: ${{ secrets.SERVER_REPO_TOKEN || github.token }}
+          path: server
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            server -> server/target
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build server
+        working-directory: server
+        run: cargo build --release
+
+      - name: Start server
+        working-directory: server
+        run: |
+          nohup cargo run --release > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/8080) 2>/dev/null; then
+              echo "server is listening on :8080"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not start on :8080" >&2
+          cat "$RUNNER_TEMP/server.log" >&2
+          exit 1
+
+      - name: Build client bundle
+        run: trunk build
+
+      - name: Wire smoke test
+        run: node scripts/e2e-smoke.mjs
+
+      - name: Browser E2E
+        env:
+          FASTPLAY_SHOT: ${{ runner.temp }}/final-table.png
+        run: node scripts/e2e-browser.mjs
+
+      - name: Upload final table screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-table-screenshot
+          path: ${{ runner.temp }}/final-table.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: ${{ runner.temp }}/server.log
+          if-no-files-found: ignore
+          retention-days: 7

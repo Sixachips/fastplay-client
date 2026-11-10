@@ -64,7 +64,7 @@ jobs:
         run: trunk build --release
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fastplay-client-dist
           path: dist/

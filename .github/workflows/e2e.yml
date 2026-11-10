@@ -28,10 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout fastPlay server
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Sixachips/fastplay-server
           # Needed only if the server repository is private.

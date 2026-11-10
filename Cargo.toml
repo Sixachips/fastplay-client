@@ -8,7 +8,7 @@ description = "Browser/PWA client for the fastPlay 4-player dominoes server"
 yew = { version = "0.23", features = ["csr"] }
 gloo-net = { version = "0.7", features = ["websocket"] }
 gloo-timers = { version = "0.4", features = ["futures"] }
-gloo-storage = "0.3"
+gloo-storage = "0.4"
 gloo-console = "0.4"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

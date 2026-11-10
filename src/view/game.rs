@@ -113,15 +113,15 @@ pub fn game_view(props: &Props) -> Html {
                 let text =
                     if let Some(required) = game.opening_tile.filter(|_| game.board.is_empty()) {
                         // The first hand of a session: only the 6|6 may open.
-                        format!("This hand opens with {required} — pick it to start")
+                        format!("Esta mano abre con {required} — elígela para empezar")
                     } else if playable_exists {
                         format!(
-                            "{tile} fits neither {} — try another tile",
+                            "{tile} no encaja en {} — prueba con otra ficha",
                             open_ends(&game)
                         )
                     } else {
                         format!(
-                            "{tile} fits neither {} — you have to pass",
+                            "{tile} no encaja en {} — tienes que pasar",
                             open_ends(&game)
                         )
                     };
@@ -185,19 +185,19 @@ pub fn game_view(props: &Props) -> Html {
 
     let status = if over {
         if game.result.is_some_and(|result| result.is_closed()) {
-            "Game closed".to_owned()
+            "Partida cerrada".to_owned()
         } else {
-            "Game over".to_owned()
+            "Partida terminada".to_owned()
         }
     } else if !my_turn {
-        let name = api.state.name_at(game.turn).unwrap_or("A player");
-        format!("{name} is playing…")
+        let name = api.state.name_at(game.turn).unwrap_or("Un jugador");
+        format!("Juega {name}…")
     } else if picked.is_some() {
-        "Now choose the end".to_owned()
+        "Elige el extremo".to_owned()
     } else if must_pass {
-        "Nothing fits — pass".to_owned()
+        "Nada encaja — pasa".to_owned()
     } else {
-        "Your turn — pick a tile".to_owned()
+        "Tu turno — elige una ficha".to_owned()
     };
 
     let player_card = |seat: usize| -> Html {
@@ -208,10 +208,10 @@ pub fn game_view(props: &Props) -> Html {
         // the right-hand neighbour, so the next turn sits east on screen, your
         // partner sits across, and the seat that played before you sits west.
         let side = match (seat + 4 - you) % 4 {
-            0 => "You",
-            1 => "Right",
-            2 => "Partner",
-            _ => "Left",
+            0 => "Tú",
+            1 => "Derecha",
+            2 => "Compañero",
+            _ => "Izquierda",
         };
         let team = match seat {
             0 | 2 => "team-north-south",
@@ -262,7 +262,7 @@ pub fn game_view(props: &Props) -> Html {
                 </div>
                 <div class="chain" ref={chain_ref}>
                     if game.board.is_empty() {
-                        <div class="chain-empty">{"The table is empty — first tile opens."}</div>
+                        <div class="chain-empty">{"La mesa está vacía — la primera ficha abre."}</div>
                     } else {
                         { for game.board.iter().map(|tile| html! {
                             <Domino tile={*tile} size={DominoSize::Board}
@@ -291,22 +291,22 @@ pub fn game_view(props: &Props) -> Html {
                         if game.board.is_empty() {
                             match game.opening_tile {
                                 Some(required) => {
-                                    format!("This hand must be opened with {required}")
+                                    format!("Esta mano debe abrirse con {required}")
                                 }
-                                None => "Opens the table".to_owned(),
+                                None => "Abre la mesa".to_owned(),
                             }
                         } else {
-                            "Play it on…".to_owned()
+                            "Juégala en…".to_owned()
                         }
                     }</span>
                     <button class="btn btn-ghost place-cancel" onclick={on_cancel.clone()}>
-                        {"Cancel"}
+                        {"Cancelar"}
                     </button>
                 </div>
                 <div class="place-row">
                     if game.board.is_empty() {
                         <button class="btn btn-primary" onclick={open_table}>
-                            {"Open the table"}
+                            {"Abrir la mesa"}
                         </button>
                     } else {
                         { for spots.iter().map(|spot| {
@@ -320,7 +320,7 @@ pub fn game_view(props: &Props) -> Html {
                                 <button class="btn btn-primary place-end"
                                         onclick={Callback::from(move |_: MouseEvent| on_place.emit(side))}>
                                     <span class="place-end-pip">{ title }</span>
-                                    <span class="place-end-reads">{ format!("reads {}", spot.reads) }</span>
+                                    <span class="place-end-reads">{ format!("se lee {}", spot.reads) }</span>
                                 </button>
                             }
                         }) }
@@ -332,7 +332,7 @@ pub fn game_view(props: &Props) -> Html {
 
     let hand_row = html! {
         <div class="hand">
-            <div class="hand-label">{format!("Your hand · {} tiles", hand.len())}</div>
+            <div class="hand-label">{format!("Tu mano · {} fichas", hand.len())}</div>
             <div class="hand-row">
                 { for hand.iter().map(|t| {
                     let tile = *t;
@@ -370,7 +370,7 @@ pub fn game_view(props: &Props) -> Html {
                         <span class="reveal-name">
                             { occupant.map(|o| o.name.clone()).unwrap_or_else(|| "—".to_owned()) }
                         </span>
-                        <span class="reveal-pips">{ format!("{pips} pips") }</span>
+                        <span class="reveal-pips">{ format!("{pips} pintas") }</span>
                         <span class="reveal-tiles">
                             { for entry.hand.iter().map(|t| html! {
                                 <Domino tile={*t} size={DominoSize::Board} />
@@ -381,7 +381,7 @@ pub fn game_view(props: &Props) -> Html {
             });
                 html! {
                     <div class="reveal card">
-                        <div class="reveal-head">{"All hands — the game is closed"}</div>
+                        <div class="reveal-head">{"Todas las manos — la partida está cerrada"}</div>
                         { for rows }
                     </div>
                 }
@@ -400,14 +400,14 @@ pub fn game_view(props: &Props) -> Html {
                 .map(usize::from)
                 .unwrap_or_else(|| usize::from(game.score.points[1] > game.score.points[0]));
             format!(
-                "{} win the match {}–{} — tap \u{201c}Play again\u{201d} to start a fresh one",
+                "{} gana la partida {}–{} — toca \u{201c}Jugar otra vez\u{201d} para empezar una nueva",
                 team_name(winner),
                 game.score.points[0],
                 game.score.points[1]
             )
         } else {
             format!(
-                "{} {} – {} {} · first to {}",
+                "{} {} – {} {} · primero en llegar a {}",
                 team_name(0),
                 game.score.points[0],
                 game.score.points[1],
@@ -423,17 +423,17 @@ pub fn game_view(props: &Props) -> Html {
         let seats_here = room.seats.len();
         let hint = if seats_here < SEAT_COUNT {
             format!(
-                "{seats_here} of {SEAT_COUNT} seats are at the table — the next game deals \
-                 as soon as the empty seats are filled and everyone taps \u{201c}Play again\u{201d}.",
+                "{seats_here} de {SEAT_COUNT} asientos ocupados — la siguiente partida se reparte \
+                 cuando se llenen los asientos libres y todos toquen \u{201c}Jugar otra vez\u{201d}.",
             )
         } else if i_am_ready {
             format!(
-                "{ready_count} of {seats_here} seats are ready — dealing the moment the table is complete.",
+                "{ready_count} de {seats_here} asientos listos — se reparte en cuanto la mesa esté completa.",
             )
         } else {
             format!(
-                "Tap \u{201c}Play again\u{201d} when you are ready \u{2014} {ready_count} of \
-                 {seats_here} seats are already waiting.",
+                "Toca \u{201c}Jugar otra vez\u{201d} cuando estés listo — {ready_count} de \
+                 {seats_here} asientos ya esperan.",
             )
         };
         html! {
@@ -444,25 +444,25 @@ pub fn game_view(props: &Props) -> Html {
                 <p class="hint">{ hint }</p>
                 <div class="banner-buttons">
                     if i_am_ready {
-                        <button class="btn btn-primary" disabled={true}>{"Waiting for players…"}</button>
+                        <button class="btn btn-primary" disabled={true}>{"Esperando a los jugadores…"}</button>
                     } else {
-                        <button class="btn btn-primary" onclick={on_play_again}>{"Play again"}</button>
+                        <button class="btn btn-primary" onclick={on_play_again}>{"Jugar otra vez"}</button>
                     }
-                    <button class="btn btn-ghost" onclick={on_leave}>{"Leave"}</button>
+                    <button class="btn btn-ghost" onclick={on_leave}>{"Salir"}</button>
                 </div>
             </div>
         }
     } else {
         html! {
             <div class="actions">
-                <button class="btn" disabled={!must_pass} onclick={on_pass}>{"Pass"}</button>
-                <button class="btn btn-ghost" onclick={on_leave.clone()}>{"Leave"}</button>
+                <button class="btn" disabled={!must_pass} onclick={on_pass}>{"Pasar"}</button>
+                <button class="btn btn-ghost" onclick={on_leave.clone()}>{"Salir"}</button>
             </div>
         }
     };
 
     let offline = matches!(api.state.socket, SocketState::Reconnecting)
-        .then(|| html! { <div class="offline-bar">{"Connection lost — reconnecting…"}</div> });
+        .then(|| html! { <div class="offline-bar">{"Conexión perdida — reconectando…"}</div> });
 
     html! {
         <>
@@ -493,7 +493,7 @@ fn result_text(
         .map(|s| s.name.clone());
     let banked = || {
         format!(
-            "+{} point{}",
+            "+{} punto{}",
             result.points,
             if result.points == 1 { "" } else { "s" }
         )
@@ -501,35 +501,35 @@ fn result_text(
     match (result.winner_team.map(usize::from), result.reason) {
         (Some(team), EndReason::HandEmpty) => (
             if team == our_team {
-                "Your partnership wins the hand! 🎉".to_owned()
+                "¡Tu pareja gana la mano! 🎉".to_owned()
             } else {
                 format!(
-                    "{} plays out — {} win the hand",
-                    scorer.as_deref().unwrap_or("A player"),
+                    "{} se queda sin fichas — gana la mano {}",
+                    scorer.as_deref().unwrap_or("Un jugador"),
                     team_name(team)
                 )
             },
             Some(format!(
-                "the last tile landed, and the rivals' pips score: {}",
+                "se colocó la última ficha y las pintas de los rivales suman: {}",
                 banked()
             )),
         ),
         (Some(team), EndReason::Blocked) => (
             if team == our_team {
-                "Game closed — your partnership wins on pips! 🎉".to_owned()
+                "Partida cerrada — ¡tu pareja gana por pintas! 🎉".to_owned()
             } else {
-                format!("Game closed — {} win on pips", team_name(team))
+                format!("Partida cerrada — gana {} por pintas", team_name(team))
             },
-            Some(format!("nobody could put a tile · {}", banked())),
+            Some(format!("nadie pudo poner ficha · {}", banked())),
         ),
         (None, EndReason::Blocked) => (
-            "Game closed — draw".to_owned(),
-            Some("the partnerships tied on combined pips, so nobody scores".to_owned()),
+            "Partida cerrada — empate".to_owned(),
+            Some("las parejas empataron en pintas, así que nadie puntúa".to_owned()),
         ),
         (_, EndReason::Abandoned) => (
-            "Game voided".to_owned(),
-            Some("a player lost connection · no points awarded".to_owned()),
+            "Partida anulada".to_owned(),
+            Some("un jugador perdió la conexión · sin puntos".to_owned()),
         ),
-        (None, EndReason::HandEmpty) => ("Game over".to_owned(), None),
+        (None, EndReason::HandEmpty) => ("Partida terminada".to_owned(), None),
     }
 }

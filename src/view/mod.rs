@@ -21,10 +21,10 @@ pub fn top_bar(props: &TopBarProps) -> Html {
     let state = &props.api.state;
     let room_code = state.room.as_ref().map(|room| room.room_id.clone());
     let (dot_class, dot_hint) = match state.socket {
-        crate::session::SocketState::Online => ("dot dot-on", "connected"),
-        crate::session::SocketState::Connecting => ("dot dot-warn", "connecting…"),
-        crate::session::SocketState::Reconnecting => ("dot dot-warn", "reconnecting…"),
-        crate::session::SocketState::Offline => ("dot dot-off", "offline"),
+        crate::session::SocketState::Online => ("dot dot-on", "conectado"),
+        crate::session::SocketState::Connecting => ("dot dot-warn", "conectando…"),
+        crate::session::SocketState::Reconnecting => ("dot dot-warn", "reconectando…"),
+        crate::session::SocketState::Offline => ("dot dot-off", "sin conexión"),
     };
 
     html! {

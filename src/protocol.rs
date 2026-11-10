@@ -21,8 +21,8 @@ pub const fn team_of(seat: usize) -> usize {
 /// A partnership's readable name for the scoreboard.
 pub const fn team_name(team: usize) -> &'static str {
     match team {
-        0 => "North–South",
-        _ => "West–East",
+        0 => "Norte–Sur",
+        _ => "Oeste–Este",
     }
 }
 

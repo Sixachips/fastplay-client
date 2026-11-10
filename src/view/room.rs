@@ -37,12 +37,12 @@ pub fn room_view(props: &Props) -> Html {
             if share::copy_text(&link) {
                 api.state.dispatch(Msg::ShowToast {
                     kind: ToastKind::Info,
-                    text: "Link copied".to_owned(),
+                    text: "Enlace copiado".to_owned(),
                 });
             } else {
                 api.state.dispatch(Msg::ShowToast {
                     kind: ToastKind::Info,
-                    text: "Tap the link box and copy manually".to_owned(),
+                    text: "Toca el cuadro del enlace y cópialo a mano".to_owned(),
                 });
             }
         })
@@ -55,7 +55,7 @@ pub fn room_view(props: &Props) -> Html {
             if !share::share_link(&link) && !share::copy_text(&link) {
                 api.state.dispatch(Msg::ShowToast {
                     kind: ToastKind::Info,
-                    text: "Tap the link box and copy manually".to_owned(),
+                    text: "Toca el cuadro del enlace y cópialo a mano".to_owned(),
                 });
             }
         })
@@ -100,7 +100,7 @@ pub fn room_view(props: &Props) -> Html {
                         Some(occupant) => html! {
                             <>
                                 <span class="seat-name">{ &occupant.name }</span>
-                                if is_you { <span class="seat-you">{"you"}</span> }
+                                if is_you { <span class="seat-you">{"tú"}</span> }
                                 <span class="seat-team">{ team_label }</span>
                             </>
                         },
@@ -115,24 +115,24 @@ pub fn room_view(props: &Props) -> Html {
         <>
             <TopBar api={api.clone()} />
             <div class="page room">
-                <h2 class="room-title">{ format!("Room {}", room.room_id) }</h2>
+                <h2 class="room-title">{ format!("Sala {}", room.room_id) }</h2>
 
                 <div class="seats">{ for seat_cards }</div>
 
                 <div class="card share">
-                    <h3>{"Invite friends"}</h3>
+                    <h3>{"Invita a tus amigos"}</h3>
                     <div class="share-row">
                         <input class="linkbox" type="text" readonly=true
                             value={link} onclick={on_select} />
-                        <button class="btn" onclick={on_copy}>{"Copy"}</button>
-                        <button class="btn btn-primary" onclick={on_share}>{"Share"}</button>
+                        <button class="btn" onclick={on_copy}>{"Copiar"}</button>
+                        <button class="btn btn-primary" onclick={on_share}>{"Compartir"}</button>
                     </div>
                     <p class="hint">
-                        { format!("{filled} of 4 seats taken — the table deals automatically once it's full.") }
+                        { format!("{filled} de 4 asientos ocupados — la mesa reparte sola cuando se llene.") }
                     </p>
                 </div>
 
-                <button class="btn btn-ghost leave" onclick={on_leave}>{"Leave"}</button>
+                <button class="btn btn-ghost leave" onclick={on_leave}>{"Salir"}</button>
             </div>
         </>
     }

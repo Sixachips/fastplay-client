@@ -32,11 +32,11 @@ fn team_picker(api: &Api) -> Html {
         }
     };
     html! {
-        <div class="team-picker" role="radiogroup" aria-label="Partnership">
+        <div class="team-picker" role="radiogroup" aria-label="Pareja">
             { for [
-                option(api, None, "No preference", "Grab the first free seat"),
-                option(api, Some(0), team_name(0), "Seats 1 and 3, opposite each other"),
-                option(api, Some(1), team_name(1), "Seats 2 and 4, opposite each other"),
+                option(api, None, "Sin preferencia", "Ocupa el primer asiento libre"),
+                option(api, Some(0), team_name(0), "Asientos 1 y 3, uno frente al otro"),
+                option(api, Some(1), team_name(1), "Asientos 2 y 4, uno frente al otro"),
             ] }
         </div>
     }
@@ -77,7 +77,7 @@ pub fn home_view(props: &Props) -> Html {
             Some(ClientToServer::JoinRoom { room, name, team }) => api.join(room, name, team),
             _ => api.state.dispatch(Msg::ShowToast {
                 kind: ToastKind::Warn,
-                text: "Enter your name and a room code first".to_owned(),
+                text: "Escribe tu nombre y un código de sala primero".to_owned(),
             }),
         })
     };
@@ -92,54 +92,54 @@ pub fn home_view(props: &Props) -> Html {
         <div class="home">
             <div class="hero">
                 <h1>{"fastPlay"}</h1>
-                <p class="tagline">{"Dominoes for four — share a link, play in the browser"}</p>
+                <p class="tagline">{"Dominó para cuatro — comparte un enlace y juega en el navegador"}</p>
             </div>
 
             if invited {
                 <div class="card invite">
-                    {"You've been invited to a table! Enter your name and join below."}
+                    {"¡Te invitaron a una mesa! Escribe tu nombre y únete abajo."}
                 </div>
             }
 
             <div class="card form">
                 <label class="field">
-                    <span>{"Your name"}</span>
+                    <span>{"Tu nombre"}</span>
                     <input type="text" value={api.state.name.clone()}
-                        oninput={on_name} maxlength="32" placeholder="e.g. Ada" />
+                        oninput={on_name} maxlength="32" placeholder="p. ej. Ada" />
                 </label>
                 <div class="field">
-                    <span>{"Partnership"}</span>
+                    <span>{"Pareja"}</span>
                     { team_picker(&api) }
-                    <span class="hint">{"You and your partner sit opposite each other — pick your side, or let the table seat you."}</span>
+                    <span class="hint">{"Tú y tu pareja os sentáis frente a frente — elige tu lado o deja que la mesa te siente."}</span>
                 </div>
                 <label class="field">
-                    <span>{"Room code"}</span>
+                    <span>{"Código de sala"}</span>
                     <input type="text" value={api.state.room_input.clone()}
-                        oninput={on_room} maxlength="16" placeholder="e.g. k7mpa" />
+                        oninput={on_room} maxlength="16" placeholder="p. ej. k7mpa" />
                 </label>
                 <div class="form-buttons">
-                    <button class="btn btn-primary" onclick={on_join}>{"Join table"}</button>
-                    <button class="btn" onclick={on_new_game}>{"New game"}</button>
+                    <button class="btn btn-primary" onclick={on_join}>{"Unirse a la mesa"}</button>
+                    <button class="btn" onclick={on_new_game}>{"Nueva partida"}</button>
                 </div>
             </div>
 
             <details class="advanced">
-                <summary>{"Server (advanced)"}</summary>
+                <summary>{"Servidor (avanzado)"}</summary>
                 <input type="text" value={api.state.ws_url.clone()}
                     oninput={on_url} placeholder="ws://localhost:8080/ws" />
-                <p class="hint">{format!("Default: {}", roomcode::guess_ws_url())}</p>
+                <p class="hint">{format!("Por defecto: {}", roomcode::guess_ws_url())}</p>
             </details>
 
             <div class="card rules">
-                <h3>{"How it plays"}</h3>
+                <h3>{"Cómo se juega"}</h3>
                 <ul>
-                    <li>{"4 players · double-six set · 7 tiles each."}</li>
-                    <li>{"The table deals automatically when the fourth player joins."}</li>
-                    <li>{"Tap a tile — then ◀ or ▶ to choose the end."}</li>
-                    <li>{"Nothing fits? Pass."}</li>
-                    <li>{"Partners sit opposite each other; the pips left with the rival pair score for the hand's winners, first partnership to 100 wins."}</li>
-                    <li>{"The 6–6 holder opens the first hand with it; later hands go to the previous winner."}</li>
-                    <li>{"First hand played out wins; four straight passes block the game and the fewest pips wins."}</li>
+                    <li>{"4 jugadores · juego doble seis · 7 fichas cada uno."}</li>
+                    <li>{"La mesa reparte sola cuando entra el cuarto jugador."}</li>
+                    <li>{"Toca una ficha y luego ◀ o ▶ para elegir el extremo."}</li>
+                    <li>{"¿Nada encaja? Pasa."}</li>
+                    <li>{"Las parejas se sientan frente a frente; las pintas que quedan en manos de la pareja rival puntúan para los ganadores de la mano. Gana la primera pareja en llegar a 100."}</li>
+                    <li>{"Quien tiene el 6–6 abre la primera mano; las siguientes las abre el ganador anterior."}</li>
+                    <li>{"Gana quien se queda sin fichas primero; cuatro pases seguidos bloquean la partida y gana quien tenga menos pintas."}</li>
                 </ul>
             </div>
         </div>

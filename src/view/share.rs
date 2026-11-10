@@ -43,7 +43,7 @@ pub fn share_link(url: &str) -> bool {
     let data = web_sys::ShareData::new();
     data.set_url(url);
     data.set_text(url);
-    data.set_title("fastPlay dominoes");
+    data.set_title("fastPlay dominó");
     if !navigator.can_share_with_data(&data) {
         return false;
     }

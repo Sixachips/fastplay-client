@@ -35,7 +35,7 @@ pub fn open_ends(game: &PublicGameState) -> String {
     match (game.left_end, game.right_end) {
         (Some(left), Some(right)) if left == right => left.to_string(),
         (Some(left), Some(right)) => format!("{left} or {right}"),
-        _ => "no tile yet".to_owned(),
+        _ => "ninguno".to_owned(),
     }
 }
 

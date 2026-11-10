@@ -205,7 +205,7 @@ fn reduce(state: &mut AppState, msg: Msg) {
             SocketEvent::Joined => state.socket = SocketState::Online,
             SocketEvent::Lost(reason) => {
                 state.socket = SocketState::Reconnecting;
-                state.set_toast(ToastKind::Warn, format!("Connection lost: {reason}"));
+                state.set_toast(ToastKind::Warn, format!("Conexión perdida: {reason}"));
             }
             SocketEvent::Msg(server) => match server {
                 ServerToClient::RoomState { room } => state.room = Some(room),
@@ -239,14 +239,15 @@ fn reduce(state: &mut AppState, msg: Msg) {
                     state.reveal = Some(hands);
                     state.set_toast(
                         ToastKind::Info,
-                        "Game closed — nobody could play. All hands are shown.".to_owned(),
+                        "Partida cerrada — nadie pudo jugar. Se muestran todas las manos."
+                            .to_owned(),
                     );
                 }
                 ServerToClient::MoveRejected { reason } => state.set_toast(ToastKind::Warn, reason),
                 ServerToClient::OpponentDisconnected { player, seat } => {
                     state.set_toast(
                         ToastKind::Warn,
-                        format!("{player} (seat {}) lost connection", seat + 1),
+                        format!("{player} (asiento {}) perdió la conexión", seat + 1),
                     );
                 }
             },

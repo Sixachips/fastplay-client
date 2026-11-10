@@ -97,7 +97,7 @@ impl Api {
         if self.state.name.trim().is_empty() {
             self.state.dispatch(Msg::ShowToast {
                 kind: ToastKind::Warn,
-                text: "Enter your name first".to_owned(),
+                text: "Escribe tu nombre primero".to_owned(),
             });
             return;
         }
@@ -117,7 +117,7 @@ impl Api {
                 gloo_console::warn!(format!("no socket to send {cmd:?} on"));
                 self.state.dispatch(Msg::ShowToast {
                     kind: ToastKind::Warn,
-                    text: "Not connected to the table".to_owned(),
+                    text: "No estás conectado a la mesa".to_owned(),
                 });
             }
         }
@@ -228,8 +228,8 @@ struct ConnectingProps {
 fn connecting_view(props: &ConnectingProps) -> Html {
     let a = props.api.clone();
     let text = match props.api.state.socket {
-        session::SocketState::Reconnecting => "Connection lost — reconnecting…",
-        _ => "Connecting to the table…",
+        session::SocketState::Reconnecting => "Conexión perdida — reconectando…",
+        _ => "Conectando a la mesa…",
     };
     html! {
         <div class="page center">
@@ -237,7 +237,7 @@ fn connecting_view(props: &ConnectingProps) -> Html {
             <p>{ text }</p>
             <button class="btn btn-ghost"
                 onclick={Callback::from(move |_: MouseEvent| a.leave())}>
-                {"Cancel"}
+                {"Cancelar"}
             </button>
         </div>
     }

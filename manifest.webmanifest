@@ -1,7 +1,7 @@
 {
-    "name": "fastPlay — 4-player dominoes",
+    "name": "fastPlay — dominó para 4 jugadores",
     "short_name": "fastPlay",
-    "description": "Play a 4-player dominoes game with friends over WebSockets. Share a link and play in the browser.",
+    "description": "Juega una partida de dominó para 4 jugadores con tus amigos por WebSockets. Comparte un enlace y juega desde el navegador.",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",

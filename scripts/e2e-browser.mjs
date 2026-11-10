@@ -221,11 +221,11 @@ await evaluate(`(() => {
   set(document.querySelectorAll('.home input')[0], 'Rita');
   return true;
 })()`);
-const northSouth = await selectByClick('North–South');
+const northSouth = await selectByClick('Norte–Sur');
 if (!northSouth.includes('picked')) throw new Error('tapping a team did not mark it picked');
 await evaluate(`(() => {
   [...document.querySelectorAll('.home .form-buttons .btn')]
-    .find((b) => b.textContent.includes('New game')).click();
+    .find((b) => b.textContent.includes('Nueva partida')).click();
   return true;
 })()`);
 await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the waiting room');
@@ -235,14 +235,14 @@ await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the wa
       const seat = document.querySelector('.seat.you');
       return { team: seat.querySelector('.seat-team')?.textContent, cls: seat.className, num: seat.querySelector('.seat-num')?.textContent };
     })()`);
-  if (!you.team || !you.team.includes('North–South')) throw new Error('the new-game join ignored the North–South preference: ' + JSON.stringify(you));
+  if (!you.team || !you.team.includes('Norte–Sur')) throw new Error('the new-game join ignored the Norte–Sur preference: ' + JSON.stringify(you));
   if (!you.cls.includes('team-north-south')) throw new Error('the room seat missed its team class: ' + you.cls);
   console.log('OK: new game — the creator sat on', you.team, '(seat', you.num + ')');
 }
 await evaluate(`(() => { document.querySelector('.leave')?.click(); return true; })()`);
 await sleep(300);
 
-// Phase 2 — join flow: arrive via the shared link, pick West–East, join first,
+// Phase 2 — join flow: arrive via the shared link, pick Oeste–Este, join first,
 // then fill the table with bot seats (a full team never refuses a join; the
 // room screen must show the team that actually seated us).
 await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/?room=${ROOM}` });
@@ -256,12 +256,12 @@ await evaluate(`(() => {
   return true;
 })()`);
 {
-  const westEast = await selectByClick('West–East');
+  const westEast = await selectByClick('Oeste–Este');
   if (!westEast.includes('picked')) throw new Error('tapping a team did not mark it picked');
 }
 await evaluate(`(() => {
   [...document.querySelectorAll('.home .form-buttons .btn')]
-    .find((b) => b.textContent.includes('Join table')).click();
+    .find((b) => b.textContent.includes('Unirse a la mesa')).click();
   return true;
 })()`);
 await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the waiting room');
@@ -271,11 +271,11 @@ await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the wa
       const seat = document.querySelector('.seat.you');
       return { team: seat.querySelector('.seat-team')?.textContent, cls: seat.className, num: seat.querySelector('.seat-num')?.textContent };
     })()`);
-  if (!you.team || !you.team.includes('West–East')) {
-    throw new Error('the preference join ignored the West–East preference: ' + JSON.stringify(you));
+  if (!you.team || !you.team.includes('Oeste–Este')) {
+    throw new Error('the preference join ignored the Oeste–Este preference: ' + JSON.stringify(you));
   }
   if (!you.cls.includes('team-east-west')) throw new Error('the room seat missed its team class: ' + you.cls);
-  console.log('OK: join flow — the picker sat me on West–East (seat', you.num + ')');
+  console.log('OK: join flow — the picker sat me on Oeste–Este (seat', you.num + ')');
 }
 
 // Fill the table; the fourth join deals hands automatically.
@@ -283,7 +283,7 @@ bots = PLAYERS.map((name) => bot(name));
 await waitFor(`!!document.querySelector('.hand .hand-tile')`, 25000, 'a dealt hand in the browser');
 
 // The seat the picker produced is on the wire too: every bot roster lists
-// Rita at an odd (West–East) seat with team 1, and every seat's team is its
+// Rita at an odd (Oeste–Este) seat with team 1, and every seat's team is its
 // seat parity.
 {
   const deadline = Date.now() + 8000;
@@ -295,13 +295,13 @@ await waitFor(`!!document.querySelector('.hand .hand-tile')`, 25000, 'a dealt ha
         if (!rita) throw new Error(b.name + "'s roster lost Rita");
         if (rita.team !== 1 || rita.seat % 2 !== 1) {
           throw new Error('Rita was seated at seat ' + rita.seat + ' with team ' + rita.team +
-            ', not the requested West–East partnership');
+            ', not the requested Oeste–Este partnership');
         }
         for (const s of b.roster) {
           if (s.team !== s.seat % 2) throw new Error('seat ' + s.seat + ' reports team ' + s.team);
         }
       }
-      console.log('OK: the wire confirms Rita joined West–East (seat ' +
+      console.log('OK: the wire confirms Rita joined Oeste–Este (seat ' +
         rosters[0].roster.find((s) => s.name === 'Rita').seat + ')');
       break;
     }
@@ -317,7 +317,7 @@ const readUi = () => evaluate(`(() => ({
   picked: document.querySelectorAll('.hand-tile.picked').length,
   bar: !!document.querySelector('.place-bar'),
   barEnds: document.querySelectorAll('.place-end').length,
-  openTable: [...document.querySelectorAll('.place-row .btn')].some((b) => b.textContent.includes('Open the table')),
+  openTable: [...document.querySelectorAll('.place-row .btn')].some((b) => b.textContent.includes('Abrir la mesa')),
   board: document.querySelectorAll('.chain .domino').length,
   status: document.querySelector('.status')?.textContent,
   over: !!document.querySelector('.banner'),
@@ -372,14 +372,14 @@ while (Date.now() < deadline) {
   if (ui.toastWarn) toasts.push(ui.toast);
   if (ui.over) break;
 
-  const mine = ui.status === 'Your turn — pick a tile' || ui.status === 'Now choose the end';
+  const mine = ui.status === 'Tu turno — elige una ficha' || ui.status === 'Elige el extremo';
 
   if (mine) {
     // Put a picked tile back: the bar's Cancel must not play anything.
     if (!cancelTested && ui.picked === 1) {
       const board = ui.board;
       await evaluate(`(() => {
-        [...document.querySelectorAll('.place-bar .btn')].find((b) => b.textContent.includes('Cancel')).click();
+        [...document.querySelectorAll('.place-bar .btn')].find((b) => b.textContent.includes('Cancelar')).click();
         return true;
       })()`);
       await sleep(300);
@@ -413,7 +413,7 @@ while (Date.now() < deadline) {
     // Confirm the pick and check the two things that must happen together.
     await evaluate(`(() => {
       const b = document.querySelector('.place-end')
-        || [...document.querySelectorAll('.place-row .btn')].find((x) => x.textContent.includes('Open the table'));
+        || [...document.querySelectorAll('.place-row .btn')].find((x) => x.textContent.includes('Abrir la mesa'));
       b.click();
       return true;
     })()`);
@@ -429,7 +429,7 @@ while (Date.now() < deadline) {
     continue;
   }
 
-  if (ui.status === 'Nothing fits — pass') {
+  if (ui.status === 'Nada encaja — pasa') {
     if (ui.passEnabled !== true) throw new Error('the table says pass but the Pass button is disabled');
     await evaluate(`(() => { document.querySelector('.actions .btn:not(.btn-ghost)').click(); return true; })()`);
     await sleep(400);
@@ -498,7 +498,7 @@ if (blocked) {
 if (ui.over) {
   try {
     await evaluate(`(() => {
-      const b = [...document.querySelectorAll('.banner-buttons .btn')].find((x) => x.textContent.includes('Play again'));
+      const b = [...document.querySelectorAll('.banner-buttons .btn')].find((x) => x.textContent.includes('Jugar otra vez'));
       if (!b) throw new Error('no Play again button in the banner');
       b.click();
       return true;

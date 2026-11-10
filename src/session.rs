@@ -123,7 +123,7 @@ async fn run(
                 };
                 let text = serde_json::to_string(&join).expect("join is serializable");
                 if sink.send(Message::Text(text)).await.is_err() {
-                    Outcome::Reconnect("link dropped while joining".to_string())
+                    Outcome::Reconnect("se cortó el enlace al unirse".to_string())
                 } else {
                     on_event.emit(SocketEvent::Joined);
 
@@ -136,7 +136,7 @@ async fn run(
                                         let text = serde_json::to_string(&msg)
                                             .expect("client messages are serializable");
                                         if sink.send(Message::Text(text)).await.is_err() {
-                                            break Outcome::Reconnect("send failed".to_string());
+                                            break Outcome::Reconnect("error al enviar".to_string());
                                         }
                                     }
                                     // `None` means every `Session` handle was
@@ -162,11 +162,11 @@ async fn run(
                                     // The server only sends text frames.
                                     Some(Ok(_)) => {}
                                     Some(Err(error)) => {
-                                        break Outcome::Reconnect(format!("socket error: {error}"));
+                                        break Outcome::Reconnect(format!("error de socket: {error}"));
                                     }
                                     None => {
                                         break Outcome::Reconnect(
-                                            "connection closed by server".to_string(),
+                                            "el servidor cerró la conexión".to_string(),
                                         );
                                     }
                                 }

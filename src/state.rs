@@ -353,11 +353,20 @@ pub fn initial() -> AppState {
     }
 }
 
-/// Remember the form inputs once a join actually happens. `team` is stored
-/// only when a partnership was picked; "no preference" clears the key.
+/// Remember the form inputs once a join actually happens. The server URL is
+/// kept only when it deviates from the current guess: a stored guess would
+/// freeze whatever hosting the build happened to ship with, and a stale one
+/// is exactly how a moved server strands a browser in a reconnect loop.
+/// `team` is stored only when a partnership was picked; "no preference"
+/// clears the key.
 pub fn persist_inputs(name: &str, ws_url: &str, team: Option<u8>) {
     let _ = LocalStorage::set(NAME_KEY, name);
-    let _ = LocalStorage::set(WS_URL_KEY, ws_url);
+    match remembered_ws_url(ws_url, &crate::roomcode::guess_ws_url()) {
+        Some(url) => {
+            let _ = LocalStorage::set(WS_URL_KEY, url);
+        }
+        None => LocalStorage::delete(WS_URL_KEY),
+    }
     match team {
         Some(team) => {
             let _ = LocalStorage::set(TEAM_KEY, team);
@@ -368,12 +377,38 @@ pub fn persist_inputs(name: &str, ws_url: &str, team: Option<u8>) {
     }
 }
 
+/// The server URL worth remembering across reloads: a custom address
+/// survives, while the guessed default does not — reloads re-guess, so
+/// default users keep following the fresh guess instead of a frozen copy.
+fn remembered_ws_url<'a>(ws_url: &'a str, guess: &str) -> Option<&'a str> {
+    (ws_url != guess).then_some(ws_url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn tile(left: u8, right: u8) -> PublicTile {
         PublicTile { left, right }
+    }
+
+    #[test]
+    fn the_guessed_server_url_is_not_remembered() {
+        assert_eq!(
+            remembered_ws_url(
+                "wss://domino.sixachips.com/ws",
+                "wss://domino.sixachips.com/ws"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_custom_server_url_is_remembered() {
+        assert_eq!(
+            remembered_ws_url("ws://192.168.1.20:8080/ws", "wss://domino.sixachips.com/ws"),
+            Some("ws://192.168.1.20:8080/ws")
+        );
     }
 
     /// A minimal seated app state for reducer tests. `initial()` touches

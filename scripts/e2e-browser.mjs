@@ -251,6 +251,19 @@ await waitFor(`!!document.querySelector('.seat.you .seat-team')`, 25000, 'the wa
   if (!you.cls.includes('team-north-south')) throw new Error('the room seat missed its team class: ' + you.cls);
   console.log('OK: new game — the creator sat on', you.team, '(seat', you.num + ')');
 }
+// The guessed server URL must not be frozen into storage: a stored guess
+// goes stale the moment hosting moves, and the client then reconnects
+// against a dead endpoint forever. A custom URL would be kept; the guess is
+// re-made on every load instead.
+{
+  const stored = await evaluate(`(() => ({
+    name: localStorage.getItem('fastplay.name'),
+    wsUrl: localStorage.getItem('fastplay.ws_url'),
+  }))()`);
+  if (stored.name !== JSON.stringify('Rita')) throw new Error('the join did not remember the name: ' + JSON.stringify(stored));
+  if (stored.wsUrl !== null) throw new Error('a default-guess join froze the WS URL in storage: ' + stored.wsUrl);
+  console.log('OK: the join remembered the name, not the guessed WS URL');
+}
 await evaluate(`(() => { document.querySelector('.leave')?.click(); return true; })()`);
 await sleep(300);
 

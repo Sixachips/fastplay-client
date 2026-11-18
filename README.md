@@ -22,7 +22,7 @@ Built with **Yew** (Rust) and **Trunk**, it runs as a single‑page app and can 
 
 - **Purpose**: Connects to a fastPlay dominoes server via WebSocket, provides a home screen, waiting room, and game board.
 - **Tech stack**: Yew (Rust framework compiling to WASM), Trunk (dev server & build), gloo-net (WebSocket), serde (wire format), web-sys / js-sys (DOM/Web APIs).
-- **Deployment**: `trunk build --release` → static files served by a reverse proxy (Caddy/NGINX) that also proxies `/ws` to the Rust server.
+- **Deployment**: `trunk build --release --public-url /fastplay-client/` → published to GitHub Pages (<https://sixachips.github.io/fastplay-client/>) by `.github/workflows/pages.yml`; the app connects cross-origin to the game server at `wss://domino.sixachips.com/ws`.
 
 ---
 ## Domino rules
@@ -39,7 +39,6 @@ To view the rules read [rules](https://github.com/Sixachips/fastplay-server/blob
 | **Rust** (including `cargo`) | 1.60+ (tested on 1.75) | `rustup update` |
 | **Node.js** (for Trunk) | 14+ (18+ recommended) | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt-get install -y nodejs` (or use `nvm`, `fnm`, etc.) |
 | **Trunk** | latest | `cargo install trunk` |
-| **Optional**: A Caddy/NGINX reverse proxy for production | — | — |
 
 ---
 
@@ -110,34 +109,18 @@ If you need to point the client at a different WebSocket host (e.g., a remote se
 
 ## Building for production
 
-```bash
-trunk build --release
-```
+Production is **GitHub Pages**: pushing to `main` (or dispatching the workflow
+manually) makes `.github/workflows/pages.yml` build with
+`trunk build --release --public-url /fastplay-client/` and publish `dist/` to
+<https://sixachips.github.io/fastplay-client/>. GitHub redirects that URL to
+`https://sixachips.com/fastplay-client/` (the org site's custom domain); both
+hosts are covered by `PAGES_HOSTS` in `src/roomcode.rs`.
 
-- Output goes to `client/dist/` (HTML, CSS, JS, and the WASM binary).
-- The `Trunk.toml` `[pwa]` section generates a web‑app manifest and a service worker (`sw.js`) with your chosen name, icons, and colors.
-
-### Serve the built files
-
-A simple static‑file server (Caddy, NGINX, `python -m http.server`, etc.) can serve `dist/`.  
-Configure your reverse proxy to forward `/ws` to the running fastPlay server.
-
-Example Caddyfile snippet:
-
-```
-:80 {
-    root * /srv/fastplay/client/dist
-    encode gzip
-    tls /path/to/cert.pem   # optional
-
-    # Proxy WebSocket upgrades to the game server
-    fastplay ws://127.0.0.1:8080 {
-        header_upstream -Origin *
-    }
-}
-```
-
-(Adjust the proxy syntax to match your chosen reverse‑proxy tool.)
+GitHub Pages cannot proxy WebSocket upgrades, so the published app connects
+cross-origin to the dedicated game server at `wss://domino.sixachips.com/ws`.
+That host runs the Rust server behind an nginx front that proxies only `/ws`,
+plus a 301 redirect to the Pages URL that keeps old `?room=CODE` share links
+working.
 
 ---
 

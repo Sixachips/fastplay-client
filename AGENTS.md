@@ -1,6 +1,6 @@
 # fastPlay Client (`client/`) — AGENTS.md
 
-Browser/PWA client (Yew 0.21 CSR + Trunk, compiled to `wasm32-unknown-unknown`) for the 4-player fastPlay dominoes server (https://github.com/Sixachips/fastplay-server). The server is a separate Cargo package (not a workspace). Installable on a phone as a PWA; production is `trunk build --release` served as static files by a reverse proxy (Caddy/NGINX) that also proxies `/ws` to the server.
+Browser/PWA client (Yew 0.21 CSR + Trunk, compiled to `wasm32-unknown-unknown`) for the 4-player fastPlay dominoes server (https://github.com/Sixachips/fastplay-server). The server is a separate Cargo package (not a workspace). Installable on a phone as a PWA; production is published to GitHub Pages (<https://sixachips.github.io/fastplay-client/>) by `.github/workflows/pages.yml` (Trunk builds with `--public-url /fastplay-client/`), and the socket connects cross-origin to the dedicated game server at `wss://domino.sixachips.com/ws`.
 
 ## Domain rules
 
@@ -15,7 +15,6 @@ Browser/PWA client (Yew 0.21 CSR + Trunk, compiled to `wasm32-unknown-unknown`) 
 - Node.js 18+ (only if you need it for tooling; Trunk itself is a Rust binary).
 - `trunk` (`cargo install trunk`).
 - Node ≥ 21 for the E2E scripts, plus `chromium` for `e2e-browser.mjs`.
-- Optional: Caddy/NGINX for production.
 
 ## Commands
 
@@ -76,5 +75,5 @@ Run from `client/` unless noted:
 - **Rematches (`PlayAgain`) & socket lifecycle (`src/session.rs`)**:
   - Do **not** cycle the WebSocket for "Play again". Call `Api::play_again()`, which sends `ClientToServer::PlayAgain` on the existing socket; the server re-deals in place once all 4 seats mark `ready: true`.
   - When joining a new room or leaving, `previous.leave()` must close the old socket before opening a new one, and `session::run` must exit (`Outcome::Stop`) when the command channel yields `None` (dropped `Session`) so stale WASM sockets never hold seats hostage on the server.
-- **WebSocket URL resolution (`src/roomcode.rs::guess_ws_url`)**: Uses same-origin `ws(s)://<host>/ws` on ports `""`, `80`, or `443` (production reverse proxy), and `ws(s)://<host>:8080/ws` on any other port (matching `trunk serve` on `:8081` talking to the server on `:8080`, including over LAN). Overridable via `localStorage['fastplay.ws_url']`.
+- **WebSocket URL resolution (`src/roomcode.rs::guess_ws_url`)**: GitHub Pages hosts (`PAGES_HOSTS`: `sixachips.com`, `www.sixachips.com`, `sixachips.github.io`) get the dedicated game server `wss://domino.sixachips.com/ws`, since Pages cannot proxy WebSocket upgrades. Other hosts use same-origin `ws(s)://<host>/ws` on ports `""`, `80`, or `443` (a reverse proxy fronts both static files and the game server), and `ws(s)://<host>:8080/ws` on any other port (matching `trunk serve` on `:8081` talking to the server on `:8080`, including over LAN). Overridable via `localStorage['fastplay.ws_url']`.
 - **Insecure-context fallbacks (`src/view/share.rs`, `src/state.rs`)**: `navigator.clipboard` and `navigator.share` are undefined over plain HTTP on a LAN IP; always go through `js_sys::Reflect::get` feature detection in `share.rs` (calling `web_sys::Navigator::clipboard()` directly panics when undefined). Similarly, `state::initial()` touches `LocalStorage` and `window.location`, so host `cargo test` tests must construct `AppState` directly rather than calling `initial()`.

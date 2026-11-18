@@ -5,6 +5,8 @@
 // WebSocket. It asserts the things a wire-level test cannot see:
 //   • the home screen's partnership picker seats the player on the requested
 //     team, in both the new-game flow and the join flow
+//   • the home form offers a new game only without a room link, and joins
+//     only through one — no room code is ever typed by hand
 //   • tapping a hand tile only PICKS it up (nothing is played yet)
 //   • a picked tile raises the placement bar with one button per fitting end
 //   • confirming grows the board by 1 and shrinks the hand by 1
@@ -213,6 +215,16 @@ const selectByClick = async (label) => {
 // picker's choice reached the seat claim.
 await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 await waitFor(`!!document.querySelector('.home input')`, 25000, 'the home form');
+{
+  const home = await evaluate(`(() => ({
+    inputs: document.querySelectorAll('.home .form input').length,
+    join: [...document.querySelectorAll('.home .form-buttons .btn')]
+      .some((b) => b.textContent.includes('Unirse a la mesa')),
+  }))()`);
+  if (home.inputs !== 1 || home.join) {
+    throw new Error('no room link: the home form must be new-game only: ' + JSON.stringify(home));
+  }
+}
 await evaluate(`(() => {
   const set = (el, v) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
@@ -247,6 +259,16 @@ await sleep(300);
 // room screen must show the team that actually seated us).
 await call('Page.navigate', { url: `http://127.0.0.1:${PORT}/?room=${ROOM}` });
 await waitFor(`!!document.querySelector('.home input')`, 25000, 'the home form');
+{
+  const home = await evaluate(`(() => ({
+    inputs: document.querySelectorAll('.home .form input').length,
+    newGame: [...document.querySelectorAll('.home .form-buttons .btn')]
+      .some((b) => b.textContent.includes('Nueva partida')),
+  }))()`);
+  if (home.inputs !== 1 || home.newGame) {
+    throw new Error('a room link must offer the join button only: ' + JSON.stringify(home));
+  }
+}
 await evaluate(`(() => {
   const set = (el, v) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);

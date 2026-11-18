@@ -1,5 +1,8 @@
-//! The landing screen: name + room code, "join table" or "new game", plus a
-//! collapsed server-address override.
+//! The landing screen: pick a name (and a partnership), then either start a
+//! new game or join through a shared link. Without a `?room=` query the form
+//! offers a new game only; arriving via a link (`?room=CODE`) offers the
+//! join button only — nobody types a room code by hand. The collapsed
+//! server-address override stays below either way.
 
 use yew::prelude::*;
 
@@ -54,14 +57,6 @@ pub fn home_view(props: &Props) -> Html {
             }
         })
     };
-    let on_room = {
-        let api = api.clone();
-        Callback::from(move |event: InputEvent| {
-            if let Some(input) = event.target_dyn_into::<web_sys::HtmlInputElement>() {
-                api.state.dispatch(Msg::RoomChanged(input.value()));
-            }
-        })
-    };
     let on_url = {
         let api = api.clone();
         Callback::from(move |event: InputEvent| {
@@ -77,7 +72,7 @@ pub fn home_view(props: &Props) -> Html {
             Some(ClientToServer::JoinRoom { room, name, team }) => api.join(room, name, team),
             _ => api.state.dispatch(Msg::ShowToast {
                 kind: ToastKind::Warn,
-                text: "Escribe tu nombre y un código de sala primero".to_owned(),
+                text: "Escribe tu nombre primero".to_owned(),
             }),
         })
     };
@@ -112,14 +107,12 @@ pub fn home_view(props: &Props) -> Html {
                     { team_picker(&api) }
                     <span class="hint">{"Tú y tu pareja os sentáis frente a frente — elige tu lado o deja que la mesa te siente."}</span>
                 </div>
-                <label class="field">
-                    <span>{"Código de sala"}</span>
-                    <input type="text" value={api.state.room_input.clone()}
-                        oninput={on_room} maxlength="16" placeholder="p. ej. k7mpa" />
-                </label>
                 <div class="form-buttons">
-                    <button class="btn btn-primary" onclick={on_join}>{"Unirse a la mesa"}</button>
-                    <button class="btn" onclick={on_new_game}>{"Nueva partida"}</button>
+                    if invited {
+                        <button class="btn btn-primary" onclick={on_join}>{"Unirse a la mesa"}</button>
+                    } else {
+                        <button class="btn btn-primary" onclick={on_new_game}>{"Nueva partida"}</button>
+                    }
                 </div>
             </div>
 

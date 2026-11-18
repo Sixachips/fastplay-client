@@ -48,8 +48,17 @@ pub fn urlencode(input: &str) -> String {
         .unwrap_or_else(|| input.to_owned())
 }
 
+/// WebSocket endpoint of the production game server — the default for hosts
+/// that serve this client as static pages but cannot proxy `/ws` themselves.
+const DOMINO_SERVER_WS: &str = "wss://domino.sixachips.com/ws";
+
+/// Hosts that serve this client from GitHub Pages.
+const PAGES_HOSTS: &[&str] = &["sixachips.com", "www.sixachips.com", "sixachips.github.io"];
+
 /// Best guess for the server's WebSocket endpoint given where the page is
 /// served from:
+///  * the dedicated game server (`wss://domino.sixachips.com/ws`) when the
+///    page is served from GitHub Pages, which cannot proxy `/ws` itself;
 ///  * same-origin `/ws` when the page runs on a standard port (i.e. a reverse
 ///    proxy fronts both static files and the game server in production);
 ///  * port 8080 on the same host otherwise (the headless server's default),
@@ -57,13 +66,66 @@ pub fn urlencode(input: &str) -> String {
 ///    and works for phones browsing the dev server over the LAN.
 pub fn guess_ws_url() -> String {
     let location = web_sys::window().expect("no window").location();
-    let secure = location.protocol().as_deref() == Ok("https:");
-    let scheme = if secure { "wss" } else { "ws" };
-    let host = location.hostname().expect("hostname");
-    let port = location.port().unwrap_or_default();
+    ws_url_for(
+        &location.protocol().unwrap_or_default(),
+        &location.hostname().expect("hostname"),
+        &location.port().unwrap_or_default(),
+    )
+}
 
-    match port.as_str() {
-        "" | "80" | "443" => format!("{scheme}://{host}/ws"),
-        _ => format!("{scheme}://{host}:8080/ws"),
+/// Pure half of `guess_ws_url`, so the guessing rules are unit-testable on
+/// the host without a browser.
+fn ws_url_for(protocol: &str, hostname: &str, port: &str) -> String {
+    // GitHub Pages cannot proxy WebSocket upgrades, so its hosts get the
+    // dedicated game server rather than a same-origin guess.
+    if PAGES_HOSTS.contains(&hostname) {
+        return DOMINO_SERVER_WS.to_owned();
+    }
+
+    let scheme = if protocol == "https:" { "wss" } else { "ws" };
+
+    match port {
+        "" | "80" | "443" => format!("{scheme}://{hostname}/ws"),
+        _ => format!("{scheme}://{hostname}:8080/ws"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ws_url_for;
+
+    #[test]
+    fn a_standard_port_defaults_to_the_same_origin() {
+        assert_eq!(
+            ws_url_for("https:", "example.com", ""),
+            "wss://example.com/ws"
+        );
+        assert_eq!(
+            ws_url_for("http:", "example.com", "80"),
+            "ws://example.com/ws"
+        );
+        assert_eq!(
+            ws_url_for("https:", "domino.sixachips.com", "443"),
+            "wss://domino.sixachips.com/ws"
+        );
+    }
+
+    #[test]
+    fn github_pages_hosts_default_to_the_domino_server() {
+        for hostname in ["sixachips.com", "www.sixachips.com", "sixachips.github.io"] {
+            assert_eq!(
+                ws_url_for("https:", hostname, ""),
+                "wss://domino.sixachips.com/ws",
+                "unexpected default for {hostname}"
+            );
+        }
+    }
+
+    #[test]
+    fn any_other_port_defaults_to_the_dev_server_on_8080() {
+        assert_eq!(
+            ws_url_for("http:", "192.168.1.20", "8081"),
+            "ws://192.168.1.20:8080/ws"
+        );
     }
 }

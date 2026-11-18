@@ -1,5 +1,9 @@
 /* fastPlay service worker — app-shell caching.
  *
+ * Cached paths are relative: './' resolves against this script's URL, so
+ * the offline shell works at any hosting path (reverse-proxy root, a
+ * GitHub Pages subpath, or a custom domain).
+ *
  * Strategy:
  *   • navigations: network-first, falling back to the cached index.html so
  *     an installed PWA opens offline and the WS layer shows "reconnecting".
@@ -12,7 +16,7 @@
 const CACHE = 'fastplay-v1';
 
 self.addEventListener('install', (event) => {
-    event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/'])));
+    event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./'])));
     self.skipWaiting();
 });
 
@@ -34,7 +38,7 @@ self.addEventListener('fetch', (event) => {
     if (req.mode === 'navigate') {
         event.respondWith(
             fetch(req).catch(async () => {
-                const cached = await caches.match('/');
+                const cached = await caches.match('./');
                 return cached || Response.error();
             })
         );

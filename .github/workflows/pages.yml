@@ -1,0 +1,63 @@
+name: Pages
+
+# Publishes the production bundle to GitHub Pages at
+# https://sixachips.github.io/fastplay-client/. The site lives under a
+# subpath, so Trunk builds with --public-url /fastplay-client/; the manifest
+# and service worker already use relative paths and work at any path.
+# Requires Settings → Pages → Build and deployment → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build GitHub Pages bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: Build bundle for the /fastplay-client/ subpath
+        run: trunk build --release --public-url /fastplay-client/
+
+      - name: Sanity-check asset paths carry the subpath prefix
+        run: grep -q "/fastplay-client/fastplay-client-" dist/index.html
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
